@@ -44,6 +44,54 @@ export type Database = {
         }
         Relationships: []
       }
+      virtual_machines: {
+        Row: {
+          created_at: string | null
+          disk_gb: number
+          id: string
+          ip_address: string | null
+          machine_type: string
+          name: string
+          os_image: string
+          ram_gb: number
+          region: string
+          status: string
+          updated_at: string | null
+          user_id: string
+          vcpus: number
+        }
+        Insert: {
+          created_at?: string | null
+          disk_gb?: number
+          id?: string
+          ip_address?: string | null
+          machine_type?: string
+          name: string
+          os_image?: string
+          ram_gb?: number
+          region?: string
+          status?: string
+          updated_at?: string | null
+          user_id: string
+          vcpus?: number
+        }
+        Update: {
+          created_at?: string | null
+          disk_gb?: number
+          id?: string
+          ip_address?: string | null
+          machine_type?: string
+          name?: string
+          os_image?: string
+          ram_gb?: number
+          region?: string
+          status?: string
+          updated_at?: string | null
+          user_id?: string
+          vcpus?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
