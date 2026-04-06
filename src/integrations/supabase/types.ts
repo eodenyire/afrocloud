@@ -14,6 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      database_instances: {
+        Row: {
+          connection_string: string | null
+          created_at: string | null
+          engine: string
+          id: string
+          name: string
+          plan: string
+          port: number | null
+          region: string
+          status: string
+          storage_gb: number
+          updated_at: string | null
+          user_id: string
+          version: string
+        }
+        Insert: {
+          connection_string?: string | null
+          created_at?: string | null
+          engine?: string
+          id?: string
+          name: string
+          plan?: string
+          port?: number | null
+          region?: string
+          status?: string
+          storage_gb?: number
+          updated_at?: string | null
+          user_id: string
+          version?: string
+        }
+        Update: {
+          connection_string?: string | null
+          created_at?: string | null
+          engine?: string
+          id?: string
+          name?: string
+          plan?: string
+          port?: number | null
+          region?: string
+          status?: string
+          storage_gb?: number
+          updated_at?: string | null
+          user_id?: string
+          version?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string | null
