@@ -7,6 +7,7 @@ import { AuthProvider } from "@/hooks/useAuth";
 import Index from "./pages/Index.tsx";
 import Auth from "./pages/Auth.tsx";
 import Console from "./pages/Console.tsx";
+import Compute from "./pages/Compute.tsx";
 import Onboarding from "./pages/Onboarding.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
