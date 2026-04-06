@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,11 +48,27 @@ const Onboarding = () => {
     return true;
   };
 
-  const handleFinish = () => {
-    localStorage.setItem("tac_onboarded", "true");
-    localStorage.setItem("tac_org", orgName);
-    localStorage.setItem("tac_region", selectedRegion);
-    localStorage.setItem("tac_plan", selectedPlan);
+  const [saving, setSaving] = useState(false);
+
+  const handleFinish = async () => {
+    if (!user) return;
+    setSaving(true);
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        org_name: orgName,
+        region: selectedRegion,
+        plan: selectedPlan,
+        onboarded: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", user.id);
+
+    if (error) {
+      toast.error("Failed to save profile. Please try again.");
+      setSaving(false);
+      return;
+    }
     navigate("/console");
   };
 
@@ -204,8 +222,8 @@ const Onboarding = () => {
                   Continue <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               ) : (
-                <Button onClick={handleFinish} className="bg-primary text-primary-foreground">
-                  Launch Console <ArrowRight className="ml-2 h-4 w-4" />
+                <Button onClick={handleFinish} disabled={saving} className="bg-primary text-primary-foreground">
+                  {saving ? "Saving..." : "Launch Console"} <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               )}
             </div>

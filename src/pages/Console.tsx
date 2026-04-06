@@ -1,6 +1,7 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
   Cloud, Server, Database, HardDrive, Globe, Shield,
@@ -36,13 +37,20 @@ const Console = () => {
   }, [user, loading, navigate]);
 
   useEffect(() => {
-    // Check if user has completed onboarding
-    const onboarded = localStorage.getItem("tac_onboarded");
-    if (user && !onboarded) {
-      navigate("/onboarding");
-    } else {
-      setHasOrg(true);
-    }
+    if (!user) return;
+    const checkOnboarding = async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("onboarded")
+        .eq("id", user.id)
+        .single();
+      if (!data?.onboarded) {
+        navigate("/onboarding");
+      } else {
+        setHasOrg(true);
+      }
+    };
+    checkOnboarding();
   }, [user, navigate]);
 
   if (loading || !user || !hasOrg) {
