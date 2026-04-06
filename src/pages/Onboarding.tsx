@@ -48,11 +48,27 @@ const Onboarding = () => {
     return true;
   };
 
-  const handleFinish = () => {
-    localStorage.setItem("tac_onboarded", "true");
-    localStorage.setItem("tac_org", orgName);
-    localStorage.setItem("tac_region", selectedRegion);
-    localStorage.setItem("tac_plan", selectedPlan);
+  const [saving, setSaving] = useState(false);
+
+  const handleFinish = async () => {
+    if (!user) return;
+    setSaving(true);
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        org_name: orgName,
+        region: selectedRegion,
+        plan: selectedPlan,
+        onboarded: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", user.id);
+
+    if (error) {
+      toast.error("Failed to save profile. Please try again.");
+      setSaving(false);
+      return;
+    }
     navigate("/console");
   };
 
