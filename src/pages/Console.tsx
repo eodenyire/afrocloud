@@ -25,10 +25,13 @@ const quickActions = [
   { icon: Network, label: "Set Up VPC", href: "#" },
 ];
 
+type Counts = Record<string, number>;
+
 const Console = () => {
   const { user, loading, signOut } = useAuth();
   const navigate = useNavigate();
   const [hasOrg, setHasOrg] = useState<boolean | null>(null);
+  const [counts, setCounts] = useState<Counts>({});
 
   useEffect(() => {
     if (!loading && !user) {
@@ -52,6 +55,24 @@ const Console = () => {
     };
     checkOnboarding();
   }, [user, navigate]);
+
+  useEffect(() => {
+    if (!user) return;
+    const fetchCounts = async () => {
+      const tables = ["virtual_machines", "database_instances", "storage_buckets", "edge_nodes"] as const;
+      const results = await Promise.all(
+        tables.map((t) =>
+          supabase.from(t).select("id", { count: "exact", head: true })
+        )
+      );
+      const newCounts: Counts = {};
+      tables.forEach((t, i) => {
+        newCounts[t] = results[i].count ?? 0;
+      });
+      setCounts(newCounts);
+    };
+    fetchCounts();
+  }, [user]);
 
   if (loading || !user || !hasOrg) {
     return (
