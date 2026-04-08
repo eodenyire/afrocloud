@@ -9,13 +9,13 @@ import {
   Network, Cpu, ChevronRight,
 } from "lucide-react";
 
-const services = [
-  { icon: Server, name: "Compute", description: "Virtual machines & containers", count: 0, color: "text-primary" },
-  { icon: Database, name: "Databases", description: "Managed PostgreSQL, Redis, MongoDB", count: 0, color: "text-primary" },
-  { icon: HardDrive, name: "Storage", description: "Object & block storage", count: 0, color: "text-primary" },
-  { icon: Globe, name: "Edge Nodes", description: "Distributed edge computing", count: 0, color: "text-primary" },
-  { icon: Network, name: "Networking", description: "VPC, load balancers, DNS", count: 0, color: "text-primary" },
-  { icon: Shield, name: "Security", description: "IAM, firewalls, encryption", count: 0, color: "text-primary" },
+const SERVICE_DEFS = [
+  { icon: Server, name: "Compute", description: "Virtual machines & containers", table: "virtual_machines" as const },
+  { icon: Database, name: "Databases", description: "Managed PostgreSQL, Redis, MongoDB", table: "database_instances" as const },
+  { icon: HardDrive, name: "Storage", description: "Object & block storage", table: "storage_buckets" as const },
+  { icon: Globe, name: "Edge Nodes", description: "Distributed edge computing", table: "edge_nodes" as const },
+  { icon: Network, name: "Networking", description: "VPC, load balancers, DNS", table: null },
+  { icon: Shield, name: "Security", description: "IAM, firewalls, encryption", table: null },
 ];
 
 const quickActions = [
