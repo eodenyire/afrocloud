@@ -59,7 +59,7 @@ const Console = () => {
   useEffect(() => {
     if (!user) return;
     const fetchCounts = async () => {
-      const tables = ["virtual_machines", "database_instances", "storage_buckets", "edge_nodes"] as const;
+      const tables = ["virtual_machines", "database_instances", "storage_buckets", "edge_nodes", "vpcs"] as const;
       const results = await Promise.all(
         tables.map((t) =>
           supabase.from(t).select("id", { count: "exact", head: true })
