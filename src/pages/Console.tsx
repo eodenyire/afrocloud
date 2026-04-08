@@ -156,29 +156,32 @@ const Console = () => {
         <div>
           <h2 className="text-lg font-heading font-semibold text-foreground mb-4">Cloud Services</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {services.map((service) => (
-              <div
-                key={service.name}
-                onClick={() => {
-                  if (service.name === "Compute") navigate("/console/compute");
-                  else if (service.name === "Databases") navigate("/console/databases");
-                  else if (service.name === "Storage") navigate("/console/storage");
-                  else if (service.name === "Edge Nodes") navigate("/console/edge-nodes");
-                }}
-                className="rounded-lg border border-border bg-card p-5 hover:border-primary/40 transition-all cursor-pointer group"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="h-10 w-10 rounded-lg bg-secondary flex items-center justify-center">
-                    <service.icon className="h-5 w-5 text-primary" />
+            {SERVICE_DEFS.map((service) => {
+              const count = service.table ? (counts[service.table] ?? 0) : 0;
+              return (
+                <div
+                  key={service.name}
+                  onClick={() => {
+                    if (service.name === "Compute") navigate("/console/compute");
+                    else if (service.name === "Databases") navigate("/console/databases");
+                    else if (service.name === "Storage") navigate("/console/storage");
+                    else if (service.name === "Edge Nodes") navigate("/console/edge-nodes");
+                  }}
+                  className="rounded-lg border border-border bg-card p-5 hover:border-primary/40 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="h-10 w-10 rounded-lg bg-secondary flex items-center justify-center">
+                      <service.icon className="h-5 w-5 text-primary" />
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-full ${count > 0 ? "text-primary bg-primary/10 font-semibold" : "text-muted-foreground bg-secondary"}`}>
+                      {count} active
+                    </span>
                   </div>
-                  <span className="text-xs text-muted-foreground bg-secondary px-2 py-1 rounded-full">
-                    {service.count} active
-                  </span>
+                  <h3 className="font-heading font-semibold text-foreground mb-1">{service.name}</h3>
+                  <p className="text-sm text-muted-foreground">{service.description}</p>
                 </div>
-                <h3 className="font-heading font-semibold text-foreground mb-1">{service.name}</h3>
-                <p className="text-sm text-muted-foreground">{service.description}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
