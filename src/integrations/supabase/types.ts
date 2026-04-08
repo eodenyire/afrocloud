@@ -62,6 +62,60 @@ export type Database = {
         }
         Relationships: []
       }
+      edge_nodes: {
+        Row: {
+          created_at: string | null
+          disk_gb: number
+          id: string
+          ip_address: string | null
+          last_sync_at: string | null
+          name: string
+          node_type: string
+          ram_gb: number
+          region: string
+          status: string
+          sync_status: string
+          updated_at: string | null
+          user_id: string
+          vcpus: number
+          workloads: number
+        }
+        Insert: {
+          created_at?: string | null
+          disk_gb?: number
+          id?: string
+          ip_address?: string | null
+          last_sync_at?: string | null
+          name: string
+          node_type?: string
+          ram_gb?: number
+          region?: string
+          status?: string
+          sync_status?: string
+          updated_at?: string | null
+          user_id: string
+          vcpus?: number
+          workloads?: number
+        }
+        Update: {
+          created_at?: string | null
+          disk_gb?: number
+          id?: string
+          ip_address?: string | null
+          last_sync_at?: string | null
+          name?: string
+          node_type?: string
+          ram_gb?: number
+          region?: string
+          status?: string
+          sync_status?: string
+          updated_at?: string | null
+          user_id?: string
+          vcpus?: number
+          workloads?: number
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string | null
