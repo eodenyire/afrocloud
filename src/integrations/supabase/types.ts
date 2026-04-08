@@ -62,6 +62,45 @@ export type Database = {
         }
         Relationships: []
       }
+      dns_records: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string
+          record_type: string
+          status: string
+          ttl: number
+          updated_at: string | null
+          user_id: string
+          value: string
+          zone: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          name: string
+          record_type?: string
+          status?: string
+          ttl?: number
+          updated_at?: string | null
+          user_id: string
+          value: string
+          zone: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string
+          record_type?: string
+          status?: string
+          ttl?: number
+          updated_at?: string | null
+          user_id?: string
+          value?: string
+          zone?: string
+        }
+        Relationships: []
+      }
       edge_nodes: {
         Row: {
           created_at: string | null
@@ -113,6 +152,51 @@ export type Database = {
           user_id?: string
           vcpus?: number
           workloads?: number
+        }
+        Relationships: []
+      }
+      load_balancers: {
+        Row: {
+          created_at: string | null
+          dns_name: string | null
+          id: string
+          lb_type: string
+          name: string
+          port: number
+          protocol: string
+          region: string
+          status: string
+          target_count: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          dns_name?: string | null
+          id?: string
+          lb_type?: string
+          name: string
+          port?: number
+          protocol?: string
+          region?: string
+          status?: string
+          target_count?: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          dns_name?: string | null
+          id?: string
+          lb_type?: string
+          name?: string
+          port?: number
+          protocol?: string
+          region?: string
+          status?: string
+          target_count?: number
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -271,6 +355,42 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
           vcpus?: number
+        }
+        Relationships: []
+      }
+      vpcs: {
+        Row: {
+          cidr_block: string
+          created_at: string | null
+          id: string
+          name: string
+          region: string
+          status: string
+          subnet_count: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          cidr_block?: string
+          created_at?: string | null
+          id?: string
+          name: string
+          region?: string
+          status?: string
+          subnet_count?: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          cidr_block?: string
+          created_at?: string | null
+          id?: string
+          name?: string
+          region?: string
+          status?: string
+          subnet_count?: number
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }
