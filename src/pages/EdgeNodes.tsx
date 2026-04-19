@@ -1,7 +1,7 @@
 import { useAuth } from "@/hooks/useAuth";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
@@ -10,6 +10,12 @@ import {
   Cpu, HardDrive, RefreshCw, Wifi, WifiOff, Activity,
   Radio, Signal,
 } from "lucide-react";
+import {
+  createEdgeNode,
+  deleteEdgeNode,
+  listEdgeNodes,
+  updateEdgeNodeStatus,
+} from "@/lib/controlPlane";
 
 const REGIONS = [
   { value: "nairobi", label: "Nairobi, Kenya", flag: "🇰🇪" },
@@ -60,6 +66,7 @@ type EdgeNode = {
 
 const EdgeNodes = () => {
   const { user, loading } = useAuth();
+  const { organization, project, loading: workspaceLoading } = useWorkspace();
   const navigate = useNavigate();
   const [nodes, setNodes] = useState<EdgeNode[]>([]);
   const [showCreate, setShowCreate] = useState(false);
@@ -77,10 +84,7 @@ const EdgeNodes = () => {
   const fetchNodes = async () => {
     if (!user) return;
     setFetching(true);
-    const { data, error } = await supabase
-      .from("edge_nodes")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const { data, error } = await listEdgeNodes(user.id);
     if (error) toast.error("Failed to load edge nodes");
     else setNodes(data || []);
     setFetching(false);
@@ -97,31 +101,37 @@ const EdgeNodes = () => {
       toast.error("Node name is required");
       return;
     }
+    if (!organization?.id) {
+      toast.error("Organization context missing");
+      return;
+    }
     setCreating(true);
     const nt = NODE_TYPES.find((n) => n.value === nodeType)!;
     const fakeIp = `10.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
 
-    const { error } = await supabase.from("edge_nodes").insert({
-      user_id: user!.id,
-      name: name.trim(),
-      region,
-      node_type: nodeType,
-      vcpus: nt.vcpus,
-      ram_gb: nt.ram,
-      disk_gb: nt.disk,
-      status: "deploying",
-      ip_address: fakeIp,
-      sync_status: "syncing",
-    });
-
-    if (error) {
-      toast.error("Failed to deploy edge node");
-    } else {
+    try {
+      await createEdgeNode(
+        { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
+        {
+          name: name.trim(),
+          region,
+          node_type: nodeType,
+          vcpus: nt.vcpus,
+          ram_gb: nt.ram,
+          disk_gb: nt.disk,
+          status: "deploying",
+          ip_address: fakeIp,
+          sync_status: "syncing",
+          price: nt.price,
+        }
+      );
       toast.success("Edge node deploying…");
       setShowCreate(false);
       setName("");
       setTimeout(() => fetchNodes(), 3000);
       fetchNodes();
+    } catch {
+      toast.error("Failed to deploy edge node");
     }
     setCreating(false);
   };
@@ -129,27 +139,36 @@ const EdgeNodes = () => {
   const toggleNode = async (node: EdgeNode) => {
     const newStatus = node.status === "running" ? "stopped" : "running";
     const newSync = newStatus === "running" ? "synced" : "offline";
-    const { error } = await supabase
-      .from("edge_nodes")
-      .update({ status: newStatus, sync_status: newSync, updated_at: new Date().toISOString() })
-      .eq("id", node.id);
-    if (error) toast.error("Action failed");
-    else {
+    try {
+      if (!organization?.id) throw new Error("Organization context missing");
+      await updateEdgeNodeStatus(
+        { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
+        node.id,
+        newStatus,
+        newSync
+      );
       toast.success(newStatus === "running" ? "Node starting…" : "Node stopping…");
       fetchNodes();
+    } catch {
+      toast.error("Action failed");
     }
   };
 
   const deleteNode = async (node: EdgeNode) => {
-    const { error } = await supabase.from("edge_nodes").delete().eq("id", node.id);
-    if (error) toast.error("Failed to remove node");
-    else {
+    try {
+      if (!organization?.id) throw new Error("Organization context missing");
+      await deleteEdgeNode(
+        { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
+        node.id
+      );
       toast.success("Edge node removed");
       fetchNodes();
+    } catch {
+      toast.error("Failed to remove node");
     }
   };
 
-  if (loading || !user) {
+  if (loading || workspaceLoading || !user) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Cloud className="h-6 w-6 text-primary animate-pulse" />

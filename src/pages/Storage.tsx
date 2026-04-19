@@ -1,7 +1,7 @@
 import { useAuth } from "@/hooks/useAuth";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
@@ -9,6 +9,15 @@ import {
   Cloud, HardDrive, ArrowLeft, Plus, Trash2, Globe,
   RefreshCw, Lock, Unlock, FolderOpen, Upload, File, X,
 } from "lucide-react";
+import {
+  createStorageBucket,
+  createStorageObject,
+  deleteStorageBucket,
+  deleteStorageObject,
+  listStorageBuckets,
+  listStorageObjects,
+  updateStorageBucketStats,
+} from "@/lib/controlPlane";
 
 const REGIONS = [
   { value: "nairobi", label: "Nairobi, Kenya" },
@@ -56,6 +65,7 @@ const formatBytes = (bytes: number): string => {
 
 const Storage = () => {
   const { user, loading } = useAuth();
+  const { organization, project, loading: workspaceLoading } = useWorkspace();
   const navigate = useNavigate();
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [showCreate, setShowCreate] = useState(false);
@@ -84,10 +94,7 @@ const Storage = () => {
   const fetchBuckets = async () => {
     if (!user) return;
     setFetching(true);
-    const { data, error } = await supabase
-      .from("storage_buckets")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const { data, error } = await listStorageBuckets(user.id);
     if (error) toast.error("Failed to load buckets");
     else setBuckets((data as Bucket[]) || []);
     setFetching(false);
@@ -95,11 +102,7 @@ const Storage = () => {
 
   const fetchObjects = async (bucketId: string) => {
     setFetchingObjects(true);
-    const { data, error } = await supabase
-      .from("storage_objects")
-      .select("*")
-      .eq("bucket_id", bucketId)
-      .order("created_at", { ascending: false });
+    const { data, error } = await listStorageObjects(bucketId);
     if (error) toast.error("Failed to load objects");
     else setObjects((data as StorageObject[]) || []);
     setFetchingObjects(false);
@@ -115,31 +118,48 @@ const Storage = () => {
       toast.error("Bucket name must be 3-63 chars, lowercase alphanumeric, dots, hyphens");
       return;
     }
+    if (!organization?.id) {
+      toast.error("Organization context missing");
+      return;
+    }
     setCreating(true);
-    const { error } = await supabase.from("storage_buckets").insert({
-      user_id: user!.id,
-      name: name.trim(),
-      region,
-      visibility,
-      storage_class: storageClass,
-    });
-    if (error) toast.error(error.message.includes("duplicate") ? "Bucket name already exists" : "Failed to create bucket");
-    else {
+    try {
+      const selectedClass = STORAGE_CLASSES.find((sc) => sc.value === storageClass);
+      const price = selectedClass ? parseFloat(selectedClass.price.replace(/[^\d.]/g, "")) : 0;
+      await createStorageBucket(
+        { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
+        {
+          name: name.trim(),
+          region,
+          visibility,
+          storage_class: storageClass,
+          status: "active",
+          price,
+        }
+      );
       toast.success("Bucket created");
       setShowCreate(false);
       setName("");
       fetchBuckets();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to create bucket";
+      toast.error(message.includes("duplicate") ? "Bucket name already exists" : "Failed to create bucket");
     }
     setCreating(false);
   };
 
   const deleteBucket = async (bucket: Bucket) => {
-    const { error } = await supabase.from("storage_buckets").delete().eq("id", bucket.id);
-    if (error) toast.error("Failed to delete bucket");
-    else {
+    try {
+      if (!organization?.id) throw new Error("Organization context missing");
+      await deleteStorageBucket(
+        { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
+        bucket.id
+      );
       toast.success("Bucket deleted");
       if (selectedBucket?.id === bucket.id) setSelectedBucket(null);
       fetchBuckets();
+    } catch {
+      toast.error("Failed to delete bucket");
     }
   };
 
@@ -147,44 +167,43 @@ const Storage = () => {
     if (!uploadKey.trim()) { toast.error("Object key is required"); return; }
     if (!selectedBucket) return;
     const sizeNum = parseInt(uploadSize) || Math.floor(Math.random() * 10000000);
-    const { error } = await supabase.from("storage_objects").insert({
-      bucket_id: selectedBucket.id,
-      user_id: user!.id,
-      key: uploadKey.trim(),
-      size_bytes: sizeNum,
-      content_type: uploadType,
-    });
-    if (error) toast.error("Failed to upload object");
-    else {
-      // Update bucket stats
-      await supabase.from("storage_buckets").update({
-        object_count: selectedBucket.object_count + 1,
-        size_bytes: selectedBucket.size_bytes + sizeNum,
-        updated_at: new Date().toISOString(),
-      }).eq("id", selectedBucket.id);
+    try {
+      await createStorageObject({
+        bucketId: selectedBucket.id,
+        userId: user!.id,
+        key: uploadKey.trim(),
+        sizeBytes: sizeNum,
+        contentType: uploadType,
+      });
+      await updateStorageBucketStats(selectedBucket.id, {
+        objectCount: selectedBucket.object_count + 1,
+        sizeBytes: selectedBucket.size_bytes + sizeNum,
+      });
       toast.success("Object uploaded");
       setShowUpload(false);
       setUploadKey("");
       setUploadSize("");
       fetchObjects(selectedBucket.id);
       fetchBuckets();
+    } catch {
+      toast.error("Failed to upload object");
     }
   };
 
   const deleteObject = async (obj: StorageObject) => {
-    const { error } = await supabase.from("storage_objects").delete().eq("id", obj.id);
-    if (error) toast.error("Failed to delete object");
-    else {
+    try {
+      await deleteStorageObject(obj.id);
       if (selectedBucket) {
-        await supabase.from("storage_buckets").update({
-          object_count: Math.max(0, selectedBucket.object_count - 1),
-          size_bytes: Math.max(0, selectedBucket.size_bytes - obj.size_bytes),
-          updated_at: new Date().toISOString(),
-        }).eq("id", selectedBucket.id);
+        await updateStorageBucketStats(selectedBucket.id, {
+          objectCount: Math.max(0, selectedBucket.object_count - 1),
+          sizeBytes: Math.max(0, selectedBucket.size_bytes - obj.size_bytes),
+        });
       }
       toast.success("Object deleted");
       if (selectedBucket) fetchObjects(selectedBucket.id);
       fetchBuckets();
+    } catch {
+      toast.error("Failed to delete object");
     }
   };
 
@@ -193,7 +212,7 @@ const Storage = () => {
     fetchObjects(bucket.id);
   };
 
-  if (loading || !user) {
+  if (loading || workspaceLoading || !user) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Cloud className="h-6 w-6 text-primary animate-pulse" />

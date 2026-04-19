@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Cloud, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { Cloud, ArrowRight, Eye, EyeOff, Github, Chrome, Apple, Building2 } from "lucide-react";
 
 const Auth = () => {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -14,8 +14,52 @@ const Auth = () => {
   const [fullName, setFullName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [ssoDomain, setSsoDomain] = useState("");
+  const [ssoLoading, setSsoLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  const handleOAuth = async (provider: "github" | "google" | "apple" | "azure") => {
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: `${window.location.origin}/console` },
+    });
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      setLoading(false);
+    }
+  };
+
+  const handleSsoRequest = async () => {
+    if (!ssoDomain.trim()) {
+      toast({ title: "Missing domain", description: "Enter your corporate domain to continue." });
+      return;
+    }
+    setSsoLoading(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) {
+      toast({
+        title: "Sign in required",
+        description: "Sign in first, then submit your enterprise SSO request.",
+        variant: "destructive",
+      });
+      setSsoLoading(false);
+      return;
+    }
+    const { error } = await supabase.from("sso_requests").insert({
+      user_id: session.user.id,
+      company_domain: ssoDomain.trim().toLowerCase(),
+      provider: "saml",
+    });
+    if (error) {
+      toast({ title: "Request failed", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "SSO request sent", description: "We will contact your admin with setup steps." });
+      setSsoDomain("");
+    }
+    setSsoLoading(false);
+  };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,10 +88,11 @@ const Auth = () => {
         if (error) throw error;
         navigate("/console");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Something went wrong.";
       toast({
         title: "Error",
-        description: error.message,
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -136,6 +181,48 @@ const Auth = () => {
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </form>
+
+          <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="h-px flex-1 bg-border" />
+            <span>or continue with</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Button variant="outline" className="gap-2" onClick={() => handleOAuth("github")} disabled={loading}>
+              <Github className="h-4 w-4" /> GitHub
+            </Button>
+            <Button variant="outline" className="gap-2" onClick={() => handleOAuth("google")} disabled={loading}>
+              <Chrome className="h-4 w-4" /> Google
+            </Button>
+            <Button variant="outline" className="gap-2" onClick={() => handleOAuth("apple")} disabled={loading}>
+              <Apple className="h-4 w-4" /> Apple
+            </Button>
+            <Button variant="outline" className="gap-2" onClick={() => handleOAuth("azure")} disabled={loading}>
+              <Building2 className="h-4 w-4" /> Microsoft
+            </Button>
+          </div>
+
+          <div className="mt-6 rounded-lg border border-border bg-secondary/60 p-4">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <Building2 className="h-4 w-4 text-primary" />
+              Enterprise SSO (SAML/OIDC)
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Submit your corporate domain to enable SSO for your organization.
+            </p>
+            <div className="mt-3 flex gap-2">
+              <Input
+                placeholder="company.com"
+                value={ssoDomain}
+                onChange={(e) => setSsoDomain(e.target.value)}
+                className="bg-background border-border"
+              />
+              <Button onClick={handleSsoRequest} disabled={ssoLoading}>
+                {ssoLoading ? "Sending..." : "Request"}
+              </Button>
+            </div>
+          </div>
 
           <div className="mt-6 text-center">
             <button

@@ -1,4 +1,5 @@
 import { useAuth } from "@/hooks/useAuth";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -6,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   Cloud, Server, Database, HardDrive, Globe, Shield,
   BarChart3, Settings, LogOut, Plus, Activity, Users,
-  Network, Cpu, ChevronRight,
+  Network, Cpu, ChevronRight, BookOpen, FileCode, Receipt, KeyRound,
 } from "lucide-react";
 
 const SERVICE_DEFS = [
@@ -15,20 +16,27 @@ const SERVICE_DEFS = [
   { icon: HardDrive, name: "Storage", description: "Object & block storage", table: "storage_buckets" as const },
   { icon: Globe, name: "Edge Nodes", description: "Distributed edge computing", table: "edge_nodes" as const },
   { icon: Network, name: "Networking", description: "VPC, load balancers, DNS", table: "vpcs" as const },
-  { icon: Shield, name: "Security", description: "IAM, firewalls, encryption", table: null },
+  { icon: Shield, name: "Identity & Access", description: "RBAC, SSO, MFA, tokens", table: null },
+  { icon: Receipt, name: "Billing", description: "Cost tracking & usage", table: null },
+  { icon: BookOpen, name: "Audit Logs", description: "Compliance & activity trails", table: null },
+  { icon: FileCode, name: "IaC Studio", description: "Templates, plans, policy checks", table: null },
+  { icon: KeyRound, name: "Developer Tools", description: "CLI, SDKs, API tokens", table: null },
 ];
 
 const quickActions = [
-  { icon: Server, label: "Launch VM", href: "#" },
-  { icon: Database, label: "Create Database", href: "#" },
-  { icon: Globe, label: "Deploy Edge Node", href: "#" },
-  { icon: Network, label: "Set Up VPC", href: "#" },
+  { icon: Server, label: "Launch VM", href: "/console/compute" },
+  { icon: Database, label: "Create Database", href: "/console/databases" },
+  { icon: Globe, label: "Deploy Edge Node", href: "/console/edge-nodes" },
+  { icon: Network, label: "Set Up VPC", href: "/console/networking" },
+  { icon: FileCode, label: "Run IaC Plan", href: "/console/iac" },
+  { icon: KeyRound, label: "Create API Token", href: "/console/developers" },
 ];
 
 type Counts = Record<string, number>;
 
 const Console = () => {
   const { user, loading, signOut } = useAuth();
+  const { profile, organization, loading: workspaceLoading } = useWorkspace();
   const navigate = useNavigate();
   const [hasOrg, setHasOrg] = useState<boolean | null>(null);
   const [counts, setCounts] = useState<Counts>({});
@@ -40,21 +48,13 @@ const Console = () => {
   }, [user, loading, navigate]);
 
   useEffect(() => {
-    if (!user) return;
-    const checkOnboarding = async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("onboarded")
-        .eq("id", user.id)
-        .single();
-      if (!data?.onboarded) {
-        navigate("/onboarding");
-      } else {
-        setHasOrg(true);
-      }
-    };
-    checkOnboarding();
-  }, [user, navigate]);
+    if (!user || workspaceLoading) return;
+    if (!profile?.onboarded) {
+      navigate("/onboarding");
+    } else {
+      setHasOrg(true);
+    }
+  }, [user, profile, workspaceLoading, navigate]);
 
   useEffect(() => {
     if (!user) return;
@@ -74,7 +74,7 @@ const Console = () => {
     fetchCounts();
   }, [user]);
 
-  if (loading || !user || !hasOrg) {
+  if (loading || workspaceLoading || !user || !hasOrg) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex items-center gap-3">
@@ -86,6 +86,7 @@ const Console = () => {
   }
 
   const displayName = user.user_metadata?.full_name || user.email?.split("@")[0] || "User";
+  const orgName = organization?.name || profile?.org_name || "Your Organization";
 
   return (
     <div className="min-h-screen bg-background">
@@ -112,7 +113,9 @@ const Console = () => {
           <h1 className="text-3xl font-heading font-bold text-foreground mb-1">
             Welcome back, <span className="text-gradient-gold">{displayName}</span>
           </h1>
-          <p className="text-muted-foreground">Manage your African cloud infrastructure</p>
+          <p className="text-muted-foreground">
+            {orgName} · Manage your African cloud infrastructure
+          </p>
         </div>
 
         {/* Stats Row */}
@@ -142,6 +145,7 @@ const Console = () => {
             {quickActions.map((action) => (
               <button
                 key={action.label}
+                onClick={() => navigate(action.href)}
                 className="flex items-center gap-3 rounded-lg border border-border bg-card p-4 hover:border-primary/50 hover:bg-secondary transition-all group"
               >
                 <Plus className="h-4 w-4 text-primary" />
@@ -167,6 +171,11 @@ const Console = () => {
                     else if (service.name === "Storage") navigate("/console/storage");
                     else if (service.name === "Edge Nodes") navigate("/console/edge-nodes");
                     else if (service.name === "Networking") navigate("/console/networking");
+                    else if (service.name === "Identity & Access") navigate("/console/iam");
+                    else if (service.name === "Billing") navigate("/console/billing");
+                    else if (service.name === "Audit Logs") navigate("/console/audit");
+                    else if (service.name === "IaC Studio") navigate("/console/iac");
+                    else if (service.name === "Developer Tools") navigate("/console/developers");
                   }}
                   className="rounded-lg border border-border bg-card p-5 hover:border-primary/40 transition-all cursor-pointer group"
                 >
