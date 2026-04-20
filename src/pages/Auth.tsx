@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Cloud, ArrowRight, Eye, EyeOff, Github, Chrome, Apple, Building2 } from "lucide-react";
+import { Cloud, ArrowRight, Eye, EyeOff, Github, Chrome, Apple, Building2, Mail, RefreshCw } from "lucide-react";
 
 const Auth = () => {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -16,8 +17,34 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
   const [ssoDomain, setSsoDomain] = useState("");
   const [ssoLoading, setSsoLoading] = useState(false);
+  const [confirmationPending, setConfirmationPending] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [resendLoading, setResendLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
+
+  // Redirect to console if already authenticated (e.g. after email confirmation callback)
+  useEffect(() => {
+    if (!authLoading && user) {
+      navigate("/console");
+    }
+  }, [user, authLoading, navigate]);
+
+  const handleResendConfirmation = async (emailAddr: string) => {
+    setResendLoading(true);
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: emailAddr,
+      options: { emailRedirectTo: `${window.location.origin}/auth` },
+    });
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Email resent", description: "A new confirmation email has been sent." });
+    }
+    setResendLoading(false);
+  };
 
   const handleOAuth = async (provider: "github" | "google" | "apple" | "azure") => {
     setLoading(true);
@@ -72,20 +99,25 @@ const Auth = () => {
           password,
           options: {
             data: { full_name: fullName },
-            emailRedirectTo: window.location.origin,
+            emailRedirectTo: `${window.location.origin}/auth`,
           },
         });
         if (error) throw error;
-        toast({
-          title: "Account created",
-          description: "Check your email to verify your account.",
-        });
+        setPendingEmail(email);
+        setConfirmationPending(true);
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
-        if (error) throw error;
+        if (error) {
+          if (error.message.toLowerCase().includes("email not confirmed")) {
+            setPendingEmail(email);
+            setConfirmationPending(true);
+            return;
+          }
+          throw error;
+        }
         navigate("/console");
       }
     } catch (error: unknown) {
@@ -118,123 +150,158 @@ const Auth = () => {
           </p>
         </div>
 
-        {/* Auth Card */}
-        <div className="rounded-xl border border-border bg-card p-8 glow-amber">
-          <form onSubmit={handleAuth} className="space-y-4">
-            {isSignUp && (
+        {/* Confirmation Pending Card */}
+        {confirmationPending ? (
+          <div className="rounded-xl border border-border bg-card p-8 glow-amber text-center space-y-4">
+            <div className="flex justify-center">
+              <div className="rounded-full bg-primary/10 p-4">
+                <Mail className="h-8 w-8 text-primary" />
+              </div>
+            </div>
+            <h2 className="text-lg font-semibold text-foreground">Check your email</h2>
+            <p className="text-sm text-muted-foreground">
+              A confirmation link has been sent to{" "}
+              <span className="font-medium text-foreground">{pendingEmail}</span>.
+              Click the link in the email to verify your account and sign in.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Didn't receive it? Check your spam folder, or resend below.
+            </p>
+            <Button
+              onClick={() => handleResendConfirmation(pendingEmail)}
+              disabled={resendLoading}
+              variant="outline"
+              className="w-full gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${resendLoading ? "animate-spin" : ""}`} />
+              {resendLoading ? "Sending..." : "Resend confirmation email"}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => { setConfirmationPending(false); setIsSignUp(false); }}
+              className="w-full text-sm text-muted-foreground hover:text-primary"
+            >
+              Back to sign in
+            </Button>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-border bg-card p-8 glow-amber">
+            <form onSubmit={handleAuth} className="space-y-4">
+              {isSignUp && (
+                <div className="space-y-2">
+                  <Label htmlFor="fullName">Full Name</Label>
+                  <Input
+                    id="fullName"
+                    type="text"
+                    placeholder="John Doe"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    required
+                    className="bg-secondary border-border"
+                  />
+                </div>
+              )}
+
               <div className="space-y-2">
-                <Label htmlFor="fullName">Full Name</Label>
+                <Label htmlFor="email">Email</Label>
                 <Input
-                  id="fullName"
-                  type="text"
-                  placeholder="John Doe"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
+                  id="email"
+                  type="email"
+                  placeholder="you@company.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   required
                   className="bg-secondary border-border"
                 />
               </div>
-            )}
 
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="bg-secondary border-border"
-              />
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={6}
+                    className="bg-secondary border-border pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <Button
+                type="submit"
+                className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+                disabled={loading}
+              >
+                {loading ? "Please wait..." : isSignUp ? "Create Account" : "Sign In"}
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </form>
+
+            <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
+              <div className="h-px flex-1 bg-border" />
+              <span>or continue with</span>
+              <div className="h-px flex-1 bg-border" />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
+            <div className="grid grid-cols-2 gap-3">
+              <Button variant="outline" className="gap-2" onClick={() => handleOAuth("github")} disabled={loading}>
+                <Github className="h-4 w-4" /> GitHub
+              </Button>
+              <Button variant="outline" className="gap-2" onClick={() => handleOAuth("google")} disabled={loading}>
+                <Chrome className="h-4 w-4" /> Google
+              </Button>
+              <Button variant="outline" className="gap-2" onClick={() => handleOAuth("apple")} disabled={loading}>
+                <Apple className="h-4 w-4" /> Apple
+              </Button>
+              <Button variant="outline" className="gap-2" onClick={() => handleOAuth("azure")} disabled={loading}>
+                <Building2 className="h-4 w-4" /> Microsoft
+              </Button>
+            </div>
+
+            <div className="mt-6 rounded-lg border border-border bg-secondary/60 p-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <Building2 className="h-4 w-4 text-primary" />
+                Enterprise SSO (SAML/OIDC)
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Submit your corporate domain to enable SSO for your organization.
+              </p>
+              <div className="mt-3 flex gap-2">
                 <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={6}
-                  className="bg-secondary border-border pr-10"
+                  placeholder="company.com"
+                  value={ssoDomain}
+                  onChange={(e) => setSsoDomain(e.target.value)}
+                  className="bg-background border-border"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+                <Button onClick={handleSsoRequest} disabled={ssoLoading}>
+                  {ssoLoading ? "Sending..." : "Request"}
+                </Button>
               </div>
             </div>
 
-            <Button
-              type="submit"
-              className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-              disabled={loading}
-            >
-              {loading ? "Please wait..." : isSignUp ? "Create Account" : "Sign In"}
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </form>
-
-          <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
-            <div className="h-px flex-1 bg-border" />
-            <span>or continue with</span>
-            <div className="h-px flex-1 bg-border" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Button variant="outline" className="gap-2" onClick={() => handleOAuth("github")} disabled={loading}>
-              <Github className="h-4 w-4" /> GitHub
-            </Button>
-            <Button variant="outline" className="gap-2" onClick={() => handleOAuth("google")} disabled={loading}>
-              <Chrome className="h-4 w-4" /> Google
-            </Button>
-            <Button variant="outline" className="gap-2" onClick={() => handleOAuth("apple")} disabled={loading}>
-              <Apple className="h-4 w-4" /> Apple
-            </Button>
-            <Button variant="outline" className="gap-2" onClick={() => handleOAuth("azure")} disabled={loading}>
-              <Building2 className="h-4 w-4" /> Microsoft
-            </Button>
-          </div>
-
-          <div className="mt-6 rounded-lg border border-border bg-secondary/60 p-4">
-            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <Building2 className="h-4 w-4 text-primary" />
-              Enterprise SSO (SAML/OIDC)
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Submit your corporate domain to enable SSO for your organization.
-            </p>
-            <div className="mt-3 flex gap-2">
-              <Input
-                placeholder="company.com"
-                value={ssoDomain}
-                onChange={(e) => setSsoDomain(e.target.value)}
-                className="bg-background border-border"
-              />
-              <Button onClick={handleSsoRequest} disabled={ssoLoading}>
-                {ssoLoading ? "Sending..." : "Request"}
-              </Button>
+            <div className="mt-6 text-center">
+              <button
+                onClick={() => setIsSignUp(!isSignUp)}
+                className="text-sm text-muted-foreground hover:text-primary transition-colors"
+              >
+                {isSignUp
+                  ? "Already have an account? Sign in"
+                  : "Don't have an account? Sign up"}
+              </button>
             </div>
           </div>
-
-          <div className="mt-6 text-center">
-            <button
-              onClick={() => setIsSignUp(!isSignUp)}
-              className="text-sm text-muted-foreground hover:text-primary transition-colors"
-            >
-              {isSignUp
-                ? "Already have an account? Sign in"
-                : "Don't have an account? Sign up"}
-            </button>
-          </div>
-        </div>
+        )}
 
         <p className="text-center text-xs text-muted-foreground mt-6">
           By continuing, you agree to The Africa Cloud Terms of Service and Privacy Policy.
