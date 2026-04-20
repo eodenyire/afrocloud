@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import {
-  Cloud, Server, ArrowLeft, Plus, Power, PowerOff, Trash2,
+  Cloud, Server, Plus, Power, PowerOff, Trash2,
   Cpu, HardDrive, MemoryStick, Globe, Monitor, RefreshCw,
 } from "lucide-react";
+import { ConsoleLayout } from "@/components/ConsoleLayout";
 import {
   createComputeInstance,
   deleteComputeInstance,
@@ -178,23 +179,14 @@ const Compute = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="flex items-center justify-between px-6 h-14">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/console")}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <Server className="h-5 w-5 text-primary" />
-            <span className="font-heading font-bold text-foreground">Compute Engine</span>
-          </div>
-          <Button size="sm" onClick={() => setShowCreate(true)} className="gap-2">
-            <Plus className="h-4 w-4" /> Launch Instance
-          </Button>
-        </div>
-      </header>
-
+    <ConsoleLayout
+      title="Compute"
+      actions={
+        <Button size="sm" onClick={() => setShowCreate(true)} className="gap-2">
+          <Plus className="h-4 w-4" /> Launch Instance
+        </Button>
+      }
+    >
       <div className="max-w-6xl mx-auto px-6 py-8">
         {/* Create Instance Panel */}
         {showCreate && (
@@ -379,7 +371,7 @@ const Compute = () => {
           )}
         </div>
       </div>
-    </div>
+    </ConsoleLayout>
   );
 };
 

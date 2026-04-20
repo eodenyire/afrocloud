@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import {
-  Cloud, HardDrive, ArrowLeft, Plus, Trash2, Globe,
+  Cloud, HardDrive, Plus, Trash2, Globe,
   RefreshCw, Lock, Unlock, FolderOpen, Upload, File, X,
 } from "lucide-react";
+import { ConsoleLayout } from "@/components/ConsoleLayout";
 import {
   createStorageBucket,
   createStorageObject,
@@ -221,31 +222,20 @@ const Storage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="flex items-center justify-between px-6 h-14">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => selectedBucket ? setSelectedBucket(null) : navigate("/console")}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <HardDrive className="h-5 w-5 text-primary" />
-            <span className="font-heading font-bold text-foreground">
-              Object Storage
-              {selectedBucket && <span className="text-muted-foreground font-normal"> / {selectedBucket.name}</span>}
-            </span>
-          </div>
-          {!selectedBucket ? (
-            <Button size="sm" onClick={() => setShowCreate(true)} className="gap-2">
-              <Plus className="h-4 w-4" /> Create Bucket
-            </Button>
-          ) : (
-            <Button size="sm" onClick={() => setShowUpload(true)} className="gap-2">
-              <Upload className="h-4 w-4" /> Upload Object
-            </Button>
-          )}
-        </div>
-      </header>
-
+    <ConsoleLayout
+      title="Storage"
+      actions={
+        !selectedBucket ? (
+          <Button size="sm" onClick={() => setShowCreate(true)} className="gap-2">
+            <Plus className="h-4 w-4" /> Create Bucket
+          </Button>
+        ) : (
+          <Button size="sm" onClick={() => setShowUpload(true)} className="gap-2">
+            <Upload className="h-4 w-4" /> Upload Object
+          </Button>
+        )
+      }
+    >
       <div className="max-w-6xl mx-auto px-6 py-8">
         {/* Bucket Detail View */}
         {selectedBucket ? (
@@ -520,7 +510,7 @@ const Storage = () => {
           </>
         )}
       </div>
-    </div>
+    </ConsoleLayout>
   );
 };
 

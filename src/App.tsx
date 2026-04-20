@@ -18,6 +18,8 @@ import Billing from "./pages/Billing.tsx";
 import AuditLogs from "./pages/AuditLogs.tsx";
 import IaC from "./pages/IaC.tsx";
 import Developers from "./pages/Developers.tsx";
+import Observability from "./pages/Observability.tsx";
+import Settings from "./pages/Settings.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -43,6 +45,8 @@ const App = () => (
             <Route path="/console/audit" element={<AuditLogs />} />
             <Route path="/console/iac" element={<IaC />} />
             <Route path="/console/developers" element={<Developers />} />
+            <Route path="/console/observability" element={<Observability />} />
+            <Route path="/console/settings" element={<Settings />} />
             <Route path="/onboarding" element={<Onboarding />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

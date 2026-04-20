@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { toast } from "sonner";
-import { FileCode, ArrowLeft, PlayCircle } from "lucide-react";
+import { Cloud, FileCode, PlayCircle } from "lucide-react";
+import { ConsoleLayout } from "@/components/ConsoleLayout";
 import {
   createIacRun,
   createIacRunStep,
@@ -108,24 +109,13 @@ const IaC = () => {
   if (loading || workspaceLoading || !user) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <FileCode className="h-6 w-6 text-primary animate-pulse" />
+        <Cloud className="h-6 w-6 text-primary animate-pulse" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="flex items-center justify-between px-6 h-14">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/console")}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <FileCode className="h-5 w-5 text-primary" />
-            <span className="font-heading font-bold text-foreground">IaC Studio</span>
-          </div>
-        </div>
-      </header>
+    <ConsoleLayout title="IaC Studio">
 
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
         <Card>
@@ -191,7 +181,7 @@ const IaC = () => {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </ConsoleLayout>
   );
 };
 

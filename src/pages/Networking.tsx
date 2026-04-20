@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import {
-  Cloud, Network, ArrowLeft, Plus, Trash2, RefreshCw,
+  Cloud, Network, Plus, Trash2, RefreshCw,
   Globe, Shield, Wifi, Server, Copy, Radio,
 } from "lucide-react";
+import { ConsoleLayout } from "@/components/ConsoleLayout";
 import {
   createDnsRecord,
   createLoadBalancer,
@@ -231,22 +232,14 @@ const Networking = () => {
   const createLabel = tab === "vpcs" ? "Create VPC" : tab === "load-balancers" ? "Create Load Balancer" : "Add DNS Record";
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="flex items-center justify-between px-6 h-14">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/console")}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <Network className="h-5 w-5 text-primary" />
-            <span className="font-heading font-bold text-foreground">Networking</span>
-          </div>
-          <Button size="sm" onClick={() => setShowCreate(true)} className="gap-2">
-            <Plus className="h-4 w-4" /> {createLabel}
-          </Button>
-        </div>
-      </header>
-
+    <ConsoleLayout
+      title="Networking"
+      actions={
+        <Button size="sm" onClick={() => setShowCreate(true)} className="gap-2">
+          <Plus className="h-4 w-4" /> {createLabel}
+        </Button>
+      }
+    >
       <div className="max-w-6xl mx-auto px-6 py-8">
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4 mb-8">
@@ -567,7 +560,7 @@ const Networking = () => {
           )}
         </div>
       </div>
-    </div>
+    </ConsoleLayout>
   );
 };
 

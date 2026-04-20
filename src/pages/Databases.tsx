@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import {
-  Cloud, Database, ArrowLeft, Plus, Power, PowerOff, Trash2,
+  Cloud, Database, Plus, Power, PowerOff, Trash2,
   Globe, RefreshCw, HardDrive, Plug,
 } from "lucide-react";
+import { ConsoleLayout } from "@/components/ConsoleLayout";
 import {
   createDatabaseInstance,
   deleteDatabaseInstance,
@@ -172,22 +173,14 @@ const Databases = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="flex items-center justify-between px-6 h-14">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/console")}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <Database className="h-5 w-5 text-primary" />
-            <span className="font-heading font-bold text-foreground">Managed Databases</span>
-          </div>
-          <Button size="sm" onClick={() => setShowCreate(true)} className="gap-2">
-            <Plus className="h-4 w-4" /> Create Database
-          </Button>
-        </div>
-      </header>
-
+    <ConsoleLayout
+      title="Databases"
+      actions={
+        <Button size="sm" onClick={() => setShowCreate(true)} className="gap-2">
+          <Plus className="h-4 w-4" /> Create Database
+        </Button>
+      }
+    >
       <div className="max-w-6xl mx-auto px-6 py-8">
         {showCreate && (
           <Card className="mb-8 border-primary/30">
@@ -388,7 +381,7 @@ const Databases = () => {
           )}
         </div>
       </div>
-    </div>
+    </ConsoleLayout>
   );
 };
 
