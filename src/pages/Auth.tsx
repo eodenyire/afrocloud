@@ -114,10 +114,9 @@ const Auth = () => {
           if (error.message.toLowerCase().includes("email not confirmed")) {
             setPendingEmail(email);
             setConfirmationPending(true);
-          } else {
-            throw error;
+            return;
           }
-          return;
+          throw error;
         }
         navigate("/console");
       }
@@ -177,12 +176,13 @@ const Auth = () => {
               <RefreshCw className={`h-4 w-4 ${resendLoading ? "animate-spin" : ""}`} />
               {resendLoading ? "Sending..." : "Resend confirmation email"}
             </Button>
-            <button
+            <Button
+              variant="ghost"
               onClick={() => { setConfirmationPending(false); setIsSignUp(false); }}
-              className="text-sm text-muted-foreground hover:text-primary transition-colors"
+              className="w-full text-sm text-muted-foreground hover:text-primary"
             >
               Back to sign in
-            </button>
+            </Button>
           </div>
         ) : (
           <div className="rounded-xl border border-border bg-card p-8 glow-amber">
