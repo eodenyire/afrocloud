@@ -53,68 +53,14 @@ const Onboarding = () => {
   const handleFinish = async () => {
     if (!user) return;
     setSaving(true);
-    const { data: org, error: orgError } = await supabase
-      .from("organizations")
-      .insert({
-        name: orgName.trim(),
-        region: selectedRegion,
-        plan: selectedPlan,
-        created_by: user.id,
-      })
-      .select("*")
-      .single();
-
-    if (orgError || !org) {
-      toast.error("Failed to create organization. Please try again.");
-      setSaving(false);
-      return;
-    }
-
-    const { data: project, error: projectError } = await supabase
-      .from("projects")
-      .insert({
-        org_id: org.id,
-        name: `${orgName.trim()} Core`,
-        environment: "production",
-      })
-      .select("*")
-      .single();
-
-    if (projectError || !project) {
-      toast.error("Failed to create project. Please try again.");
-      setSaving(false);
-      return;
-    }
-
-    await supabase.from("memberships").insert({
-      org_id: org.id,
-      user_id: user.id,
-      role: "owner",
+    const { error } = await supabase.rpc("bootstrap_organization", {
+      p_org_name: orgName.trim(),
+      p_region: selectedRegion,
+      p_plan: selectedPlan,
     });
 
-    await supabase.from("roles").insert([
-      { org_id: org.id, name: "Owner", description: "Full administrative access", permissions: ["*"] },
-      { org_id: org.id, name: "Admin", description: "Manage resources and members", permissions: ["resource.*", "iam.*"] },
-      { org_id: org.id, name: "Developer", description: "Provision and manage resources", permissions: ["resource.read", "resource.write"] },
-      { org_id: org.id, name: "Viewer", description: "Read-only access", permissions: ["resource.read", "audit.read"] },
-    ]);
-
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .update({
-        org_name: orgName,
-        region: selectedRegion,
-        plan: selectedPlan,
-        onboarded: true,
-        org_id: org.id,
-        project_id: project.id,
-        role: "owner",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", user.id);
-
-    if (profileError) {
-      toast.error("Failed to save profile. Please try again.");
+    if (error) {
+      toast.error("Failed to set up organization. Please try again.");
       setSaving(false);
       return;
     }
