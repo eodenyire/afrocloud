@@ -1,7 +1,7 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
@@ -16,6 +16,7 @@ import {
   listDatabaseInstances,
   updateDatabaseStatus,
 } from "@/lib/controlPlane";
+import { useResourcePoller } from "@/hooks/useResourcePoller";
 
 const REGIONS = [
   { value: "nairobi", label: "Nairobi, Kenya" },
@@ -78,18 +79,20 @@ const Databases = () => {
     if (!loading && !user) navigate("/auth");
   }, [user, loading, navigate]);
 
-  const fetchInstances = async () => {
+  const fetchInstances = useCallback(async () => {
     if (!user) return;
     setFetching(true);
     const { data, error } = await listDatabaseInstances(user.id);
     if (error) toast.error("Failed to load databases");
     else setInstances(data || []);
     setFetching(false);
-  };
+  }, [user]);
 
   useEffect(() => {
     if (user) fetchInstances();
-  }, [user]);
+  }, [user, fetchInstances]);
+
+  useResourcePoller(user?.id, fetchInstances);
 
   const selectedEngine = ENGINES.find((e) => e.value === engine)!;
   const selectedPlan = PLANS.find((p) => p.value === plan)!;

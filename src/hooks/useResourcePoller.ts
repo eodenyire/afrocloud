@@ -11,7 +11,7 @@ const PROVISIONING_DELAY_MS = 4000;
  * Also subscribes to Supabase Realtime so the parent can refresh UI on change.
  */
 export const useResourcePoller = (userId: string | undefined, onRefresh: () => void) => {
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const simulateProvisioning = useCallback(async () => {
     if (!userId) return;
@@ -40,8 +40,9 @@ export const useResourcePoller = (userId: string | undefined, onRefresh: () => v
   useEffect(() => {
     if (!userId) return;
 
-    // Defer first simulation check
-    timerRef.current = setTimeout(simulateProvisioning, PROVISIONING_DELAY_MS);
+    // Simulate async provisioning completion on a cadence.
+    simulateProvisioning();
+    timerRef.current = setInterval(simulateProvisioning, PROVISIONING_DELAY_MS);
 
     // Realtime channel – react to any row changes from this user
     const channel = supabase.channel(`resource-updates-${userId}`);
@@ -59,6 +60,8 @@ export const useResourcePoller = (userId: string | undefined, onRefresh: () => v
         "postgres_changes" as never,
         { event: "*", schema: "public", table, filter: `user_id=eq.${userId}` } as never,
         () => {
+          // React quickly when a resource changes while still keeping interval safety net.
+          simulateProvisioning();
           onRefresh();
         }
       );
@@ -67,7 +70,7 @@ export const useResourcePoller = (userId: string | undefined, onRefresh: () => v
     channel.subscribe();
 
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
       supabase.removeChannel(channel);
     };
   }, [userId, simulateProvisioning, onRefresh]);

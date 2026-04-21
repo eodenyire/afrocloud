@@ -84,6 +84,7 @@ const Storage = () => {
   const [objects, setObjects] = useState<StorageObject[]>([]);
   const [fetchingObjects, setFetchingObjects] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadKey, setUploadKey] = useState("");
   const [uploadSize, setUploadSize] = useState("");
   const [uploadType, setUploadType] = useState("application/octet-stream");
@@ -165,16 +166,19 @@ const Storage = () => {
   };
 
   const simulateUpload = async () => {
-    if (!uploadKey.trim()) { toast.error("Object key is required"); return; }
+    const resolvedKey = uploadKey.trim() || uploadFile?.name || "";
+    if (!resolvedKey) { toast.error("Select a file or provide an object key"); return; }
     if (!selectedBucket) return;
-    const sizeNum = parseInt(uploadSize) || Math.floor(Math.random() * 10000000);
+    const manualSize = parseInt(uploadSize);
+    const sizeNum = uploadFile?.size ?? (Number.isFinite(manualSize) ? manualSize : Math.floor(Math.random() * 10000000));
+    const resolvedType = uploadType.trim() || uploadFile?.type || "application/octet-stream";
     try {
       await createStorageObject({
         bucketId: selectedBucket.id,
         userId: user!.id,
-        key: uploadKey.trim(),
+        key: resolvedKey,
         sizeBytes: sizeNum,
-        contentType: uploadType,
+        contentType: resolvedType,
       });
       await updateStorageBucketStats(selectedBucket.id, {
         objectCount: selectedBucket.object_count + 1,
@@ -182,8 +186,10 @@ const Storage = () => {
       });
       toast.success("Object uploaded");
       setShowUpload(false);
+      setUploadFile(null);
       setUploadKey("");
       setUploadSize("");
+      setUploadType("application/octet-stream");
       fetchObjects(selectedBucket.id);
       fetchBuckets();
     } catch {
@@ -264,6 +270,26 @@ const Storage = () => {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
+                    <label className="text-sm text-muted-foreground block mb-2">Choose File (optional)</label>
+                    <input
+                      type="file"
+                      onChange={(e) => {
+                        const nextFile = e.target.files?.[0] ?? null;
+                        setUploadFile(nextFile);
+                        if (!nextFile) return;
+                        if (!uploadKey) setUploadKey(nextFile.name);
+                        setUploadSize(String(nextFile.size));
+                        setUploadType(nextFile.type || "application/octet-stream");
+                      }}
+                      className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:text-foreground hover:file:bg-secondary/70"
+                    />
+                    {uploadFile ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {uploadFile.name} · {formatBytes(uploadFile.size)}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div>
                     <label className="text-sm text-muted-foreground block mb-2">Object Key (path)</label>
                     <input
                       value={uploadKey}
@@ -293,7 +319,18 @@ const Storage = () => {
                     </div>
                   </div>
                   <div className="flex justify-end gap-3">
-                    <Button variant="outline" onClick={() => setShowUpload(false)}>Cancel</Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setShowUpload(false);
+                        setUploadFile(null);
+                        setUploadKey("");
+                        setUploadSize("");
+                        setUploadType("application/octet-stream");
+                      }}
+                    >
+                      Cancel
+                    </Button>
                     <Button onClick={simulateUpload}>Upload</Button>
                   </div>
                 </CardContent>

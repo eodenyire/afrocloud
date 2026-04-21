@@ -1,7 +1,7 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
@@ -16,6 +16,7 @@ import {
   listComputeInstances,
   updateComputeStatus,
 } from "@/lib/controlPlane";
+import { useResourcePoller } from "@/hooks/useResourcePoller";
 
 const REGIONS = [
   { value: "nairobi", label: "Nairobi, Kenya" },
@@ -82,7 +83,7 @@ const Compute = () => {
     if (!loading && !user) navigate("/auth");
   }, [user, loading, navigate]);
 
-  const fetchVMs = async () => {
+  const fetchVMs = useCallback(async () => {
     if (!user) return;
     setFetching(true);
     const { data, error } = await listComputeInstances(user.id);
@@ -92,11 +93,13 @@ const Compute = () => {
       setVms(data || []);
     }
     setFetching(false);
-  };
+  }, [user]);
 
   useEffect(() => {
     if (user) fetchVMs();
-  }, [user]);
+  }, [user, fetchVMs]);
+
+  useResourcePoller(user?.id, fetchVMs);
 
   const selectedMachine = MACHINE_TYPES.find((m) => m.value === machineType)!;
 
