@@ -17,6 +17,7 @@ import {
   updateDatabaseStatus,
 } from "@/lib/controlPlane";
 import { useResourcePoller } from "@/hooks/useResourcePoller";
+import { deleteDatabaseFromProvider, provisionDatabase, startDatabase, stopDatabase } from "@/lib/providerApi";
 
 const REGIONS = [
   { value: "nairobi", label: "Nairobi, Kenya" },
@@ -58,6 +59,7 @@ type DBInstance = {
   connection_string: string | null;
   port: number | null;
   created_at: string | null;
+  tags?: Record<string, string>;
 };
 
 const Databases = () => {
@@ -101,16 +103,18 @@ const Databases = () => {
     if (!name.trim()) { toast.error("Database name is required"); return; }
     if (!organization?.id) { toast.error("Organization context missing"); return; }
     setCreating(true);
-    const eng = ENGINES.find((e) => e.value === engine)!;
     const pl = PLANS.find((p) => p.value === plan)!;
-    const host = `${name.trim().toLowerCase().replace(/\s+/g, "-")}.${region}.africloud.io`;
-    const connStr = engine === "postgresql"
-      ? `postgresql://admin:****@${host}:${eng.defaultPort}/main`
-      : engine === "mongodb"
-        ? `mongodb://admin:****@${host}:${eng.defaultPort}/main`
-        : `redis://default:****@${host}:${eng.defaultPort}`;
 
     try {
+      const providerDb = await provisionDatabase({
+        name: name.trim(),
+        engine,
+        version,
+        region,
+        plan,
+        storage_gb: pl.storage,
+      });
+
       await createDatabaseInstance(
         { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
         {
@@ -120,16 +124,16 @@ const Databases = () => {
           region,
           plan,
           storage_gb: pl.storage,
-          status: "provisioning",
-          connection_string: connStr,
-          port: eng.defaultPort,
+          status: providerDb.status || "provisioning",
+          connection_string: providerDb.connection_string,
+          port: providerDb.port,
+          tags: { provider_id: providerDb.provider_id },
           price: pl.price,
         }
       );
-      toast.success("Database is provisioning…");
+      toast.success("Database request sent to provider");
       setShowCreate(false);
       setName("");
-      setTimeout(() => fetchInstances(), 3000);
       fetchInstances();
     } catch {
       toast.error("Failed to create database");
@@ -139,12 +143,15 @@ const Databases = () => {
 
   const toggleInstance = async (db: DBInstance) => {
     const newStatus = db.status === "running" ? "stopped" : "running";
+    const providerId = db.tags?.provider_id;
     try {
       if (!organization?.id) throw new Error("Organization context missing");
+      if (!providerId) throw new Error("Missing provider identifier");
+      const providerState = db.status === "running" ? await stopDatabase(providerId) : await startDatabase(providerId);
       await updateDatabaseStatus(
         { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
         db.id,
-        newStatus
+        providerState.status || newStatus
       );
       toast.success(newStatus === "running" ? "Starting…" : "Stopping…");
       fetchInstances();
@@ -154,8 +161,10 @@ const Databases = () => {
   };
 
   const deleteInstance = async (db: DBInstance) => {
+    const providerId = db.tags?.provider_id;
     try {
       if (!organization?.id) throw new Error("Organization context missing");
+      if (providerId) await deleteDatabaseFromProvider(providerId);
       await deleteDatabaseInstance(
         { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
         db.id

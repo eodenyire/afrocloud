@@ -196,6 +196,7 @@ export const createDatabaseInstance = async (
     connection_string: string;
     port: number;
     price: number;
+    tags?: Json;
   }
 ) => {
   const { data, error } = await supabase
@@ -214,7 +215,7 @@ export const createDatabaseInstance = async (
       org_id: ctx.orgId,
       project_id: ctx.projectId,
       provider: "africa-cloud",
-      tags: {},
+      tags: payload.tags ?? {},
     })
     .select("*")
     .single();
@@ -275,6 +276,7 @@ export const createStorageBucket = async (
     storage_class: string;
     status: string;
     price: number;
+    tags?: Json;
   }
 ) => {
   const { data, error } = await supabase
@@ -289,7 +291,7 @@ export const createStorageBucket = async (
       org_id: ctx.orgId,
       project_id: ctx.projectId,
       provider: "africa-cloud",
-      tags: {},
+      tags: payload.tags ?? {},
     })
     .select("*")
     .single();
@@ -376,6 +378,7 @@ export const createEdgeNode = async (
     ip_address: string | null;
     sync_status: string;
     price: number;
+    tags?: Json;
   }
 ) => {
   const { data, error } = await supabase
@@ -394,7 +397,7 @@ export const createEdgeNode = async (
       org_id: ctx.orgId,
       project_id: ctx.projectId,
       provider: "africa-cloud",
-      tags: {},
+      tags: payload.tags ?? {},
     })
     .select("*")
     .single();
@@ -461,7 +464,7 @@ export const createVpc = async (
       org_id: ctx.orgId,
       project_id: ctx.projectId,
       provider: "africa-cloud",
-      tags: {},
+      tags: payload.tags ?? {},
     })
     .select("*")
     .single();
@@ -512,6 +515,7 @@ export const createLoadBalancer = async (
     status: string;
     dns_name: string | null;
     price: number;
+    tags?: Json;
   }
 ) => {
   const { data, error } = await supabase
@@ -528,7 +532,7 @@ export const createLoadBalancer = async (
       org_id: ctx.orgId,
       project_id: ctx.projectId,
       provider: "africa-cloud",
-      tags: {},
+      tags: payload.tags ?? {},
     })
     .select("*")
     .single();
@@ -585,7 +589,7 @@ export const createDnsRecord = async (
       org_id: ctx.orgId,
       project_id: ctx.projectId,
       provider: "africa-cloud",
-      tags: {},
+      tags: payload.tags ?? {},
     })
     .select("*")
     .single();

@@ -17,6 +17,7 @@ import {
   updateComputeStatus,
 } from "@/lib/controlPlane";
 import { useResourcePoller } from "@/hooks/useResourcePoller";
+import { deleteComputeFromProvider, provisionCompute, startCompute, stopCompute } from "@/lib/providerApi";
 
 const REGIONS = [
   { value: "nairobi", label: "Nairobi, Kenya" },
@@ -62,6 +63,7 @@ type VM = {
   status: string;
   ip_address: string | null;
   created_at: string | null;
+  tags?: Record<string, string>;
 };
 
 const Compute = () => {
@@ -114,9 +116,15 @@ const Compute = () => {
     }
     setCreating(true);
     const machine = MACHINE_TYPES.find((m) => m.value === machineType)!;
-    const fakeIp = `10.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
 
     try {
+      const providerVm = await provisionCompute({
+        name: name.trim(),
+        region,
+        machine_type: machineType,
+        os_image: osImage,
+      });
+
       await createComputeInstance(
         { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
         {
@@ -127,15 +135,15 @@ const Compute = () => {
           ram_gb: machine.ram,
           disk_gb: machine.disk,
           os_image: osImage,
-          status: "provisioning",
-          ip_address: fakeIp,
+          status: providerVm.status || "provisioning",
+          ip_address: providerVm.public_ip ?? providerVm.private_ip ?? null,
+          tags: { provider_id: providerVm.provider_id },
           price: machine.price,
         }
       );
-      toast.success("Instance is provisioning…");
+      toast.success("Instance request sent to provider");
       setShowCreate(false);
       setName("");
-      setTimeout(() => fetchVMs(), 3000);
       fetchVMs();
     } catch {
       toast.error("Failed to create instance");
@@ -145,12 +153,17 @@ const Compute = () => {
 
   const toggleVM = async (vm: VM) => {
     const newStatus = vm.status === "running" ? "stopped" : "running";
+    const providerId = (vm as VM & { tags?: Record<string, string> }).tags?.provider_id;
     try {
       if (!organization?.id) throw new Error("Organization context missing");
+      if (!providerId) throw new Error("Missing provider identifier");
+
+      const providerState = vm.status === "running" ? await stopCompute(providerId) : await startCompute(providerId);
+
       await updateComputeStatus(
         { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
         vm.id,
-        newStatus
+        providerState.status || newStatus
       );
       toast.success(newStatus === "running" ? "Instance starting…" : "Instance stopping…");
       fetchVMs();
@@ -160,8 +173,10 @@ const Compute = () => {
   };
 
   const deleteVM = async (vm: VM) => {
+    const providerId = (vm as VM & { tags?: Record<string, string> }).tags?.provider_id;
     try {
       if (!organization?.id) throw new Error("Organization context missing");
+      if (providerId) await deleteComputeFromProvider(providerId);
       await deleteComputeInstance(
         { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
         vm.id
