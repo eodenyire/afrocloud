@@ -1,9 +1,18 @@
-const getProviderBaseUrl = () => {
-  const baseUrl = import.meta.env.VITE_PROVIDER_API_BASE_URL;
+export const getConfiguredProviderBaseUrl = () => {
+  const runtimeBaseUrl = localStorage.getItem("ac_provider_base_url")?.trim();
+  const baseUrl = runtimeBaseUrl || import.meta.env.VITE_PROVIDER_API_BASE_URL;
   if (!baseUrl) {
-    throw new Error("Provider API is not configured. Set VITE_PROVIDER_API_BASE_URL.");
+    throw new Error("Provider API is not configured. Set ac_provider_base_url or VITE_PROVIDER_API_BASE_URL.");
   }
   return baseUrl.replace(/\/$/, "");
+};
+
+export const isProviderApiConfigured = () => {
+  try {
+    return Boolean(getConfiguredProviderBaseUrl());
+  } catch {
+    return false;
+  }
 };
 
 const getProviderToken = () => {
@@ -12,7 +21,7 @@ const getProviderToken = () => {
 
 const requestProvider = async <T>(path: string, init: RequestInit): Promise<T> => {
   const token = getProviderToken();
-  const response = await fetch(`${getProviderBaseUrl()}${path}`, {
+  const response = await fetch(`${getConfiguredProviderBaseUrl()}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -34,6 +43,14 @@ export type ProviderCompute = {
   status: string;
   public_ip: string | null;
   private_ip: string | null;
+  access?: {
+    ssh_user?: string;
+    ssh_port?: number;
+    connectivity?: "public" | "private-mesh" | "site-local" | string;
+    host?: string;
+    auth_method?: "ssh-key" | "password" | string;
+    ssh_key_name?: string;
+  };
 };
 
 export type ProviderDatabase = {

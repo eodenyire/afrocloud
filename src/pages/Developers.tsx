@@ -48,6 +48,7 @@ const Developers = () => {
   const [creating, setCreating] = useState(false);
 
   const [providerToken, setProviderToken] = useState(localStorage.getItem("ac_provider_token") ?? "");
+  const [providerBaseUrl, setProviderBaseUrl] = useState(localStorage.getItem("ac_provider_base_url") ?? "");
   const [command, setCommand] = useState("acctl resources list");
   const [runningCommand, setRunningCommand] = useState(false);
   const [commandOutput, setCommandOutput] = useState<string>("");
@@ -98,6 +99,16 @@ const Developers = () => {
   const saveProviderToken = () => {
     localStorage.setItem("ac_provider_token", providerToken.trim());
     toast.success("Provider token saved for real provisioning API calls");
+  };
+
+  const saveProviderBaseUrl = () => {
+    if (!providerBaseUrl.trim()) {
+      localStorage.removeItem("ac_provider_base_url");
+      toast.success("Runtime provider base URL cleared");
+      return;
+    }
+    localStorage.setItem("ac_provider_base_url", providerBaseUrl.trim());
+    toast.success("Runtime provider base URL saved");
   };
 
   const handleRunCommand = async () => {
@@ -210,6 +221,17 @@ const Developers = () => {
               />
               <Button onClick={saveProviderToken}>Save Token</Button>
             </div>
+            <div className="flex flex-col md:flex-row gap-3">
+              <Input
+                placeholder="Provider API base URL (e.g. https://provider.example.com)"
+                value={providerBaseUrl}
+                onChange={(e) => setProviderBaseUrl(e.target.value)}
+              />
+              <Button variant="outline" onClick={saveProviderBaseUrl}>Save URL</Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Runtime URL overrides <code>VITE_PROVIDER_API_BASE_URL</code> and applies immediately.
+            </p>
           </CardContent>
         </Card>
 
