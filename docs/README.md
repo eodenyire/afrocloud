@@ -12,4 +12,4 @@ This directory contains product, technical, and delivery documentation for Afric
 - `Architecture.md`
 
 ## Extended documentation
-Numbered documents (`00_...` through `12_...`) capture detailed architecture, schema, API, release planning, runbooks, and progress reports.
+Numbered documents (`00_...` through `13_...`) capture detailed architecture, schema, API, release planning, runbooks, progress reports, and real-world provisioning guidance.
