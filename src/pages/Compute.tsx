@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import {
   Cloud, Server, Plus, Power, PowerOff, Trash2,
-  Cpu, HardDrive, MemoryStick, Globe, Monitor, RefreshCw,
+  Cpu, HardDrive, MemoryStick, Globe, Monitor, RefreshCw, Copy,
 } from "lucide-react";
 import { ConsoleLayout } from "@/components/ConsoleLayout";
 import {
@@ -66,6 +66,23 @@ type VM = {
   tags?: Record<string, string>;
 };
 
+const getConnectivity = (vm: VM) => vm.tags?.connectivity ?? "unknown";
+const getSshUser = (vm: VM) => vm.tags?.ssh_user ?? null;
+const getSshPort = (vm: VM) => (vm.tags?.ssh_port ? Number(vm.tags.ssh_port) : null);
+const getHost = (vm: VM) => vm.tags?.connect_host ?? vm.ip_address;
+const getAuthMethod = (vm: VM) => vm.tags?.auth_method ?? null;
+const getSshKeyName = (vm: VM) => vm.tags?.ssh_key_name ?? null;
+const isConnectReady = (vm: VM) => {
+  if (vm.status !== "running") return false;
+  const host = getHost(vm);
+  const user = getSshUser(vm);
+  const port = getSshPort(vm);
+  const auth = getAuthMethod(vm);
+  if (!host || !user || !port || !auth) return false;
+  if (auth === "ssh-key") return Boolean(getSshKeyName(vm));
+  return true;
+};
+
 const Compute = () => {
   const { user, loading } = useAuth();
   const { organization, project, loading: workspaceLoading } = useWorkspace();
@@ -80,6 +97,7 @@ const Compute = () => {
   const [region, setRegion] = useState("nairobi");
   const [machineType, setMachineType] = useState("ac-standard-1");
   const [osImage, setOsImage] = useState("ubuntu-22.04");
+  const realProvisioningEnabled = Boolean(import.meta.env.VITE_PROVIDER_API_BASE_URL);
 
   useEffect(() => {
     if (!loading && !user) navigate("/auth");
@@ -125,6 +143,16 @@ const Compute = () => {
         os_image: osImage,
       });
 
+      const connectionTags: Record<string, string> = { provider_id: providerVm.provider_id };
+      if (providerVm.access?.ssh_user) connectionTags.ssh_user = providerVm.access.ssh_user;
+      if (providerVm.access?.ssh_port) connectionTags.ssh_port = String(providerVm.access.ssh_port);
+      if (providerVm.access?.connectivity) connectionTags.connectivity = providerVm.access.connectivity;
+      if (providerVm.access?.auth_method) connectionTags.auth_method = providerVm.access.auth_method;
+      if (providerVm.access?.ssh_key_name) connectionTags.ssh_key_name = providerVm.access.ssh_key_name;
+      if (providerVm.access?.host) connectionTags.connect_host = providerVm.access.host;
+      if (!connectionTags.connect_host && providerVm.public_ip) connectionTags.connect_host = providerVm.public_ip;
+      if (!connectionTags.connect_host && providerVm.private_ip) connectionTags.connect_host = providerVm.private_ip;
+
       await createComputeInstance(
         { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
         {
@@ -137,7 +165,7 @@ const Compute = () => {
           os_image: osImage,
           status: providerVm.status || "provisioning",
           ip_address: providerVm.public_ip ?? providerVm.private_ip ?? null,
-          tags: { provider_id: providerVm.provider_id },
+          tags: connectionTags,
           price: machine.price,
         }
       );
@@ -188,6 +216,35 @@ const Compute = () => {
     }
   };
 
+  const copySshCommand = async (vm: VM) => {
+    const host = getHost(vm);
+    const user = getSshUser(vm);
+    const port = getSshPort(vm);
+    const authMethod = getAuthMethod(vm);
+    if (!host) {
+      toast.error("No host available for this instance yet");
+      return;
+    }
+    if (!user || !port || !authMethod) {
+      toast.error("Connection details are still pending from the provider");
+      return;
+    }
+    if (authMethod === "password") {
+      const command = `ssh -p ${port} ${user}@${host}`;
+      await navigator.clipboard.writeText(command);
+      toast.success("SSH command copied");
+      return;
+    }
+    const keyName = getSshKeyName(vm);
+    if (!keyName) {
+      toast.error("SSH key name is pending from the provider");
+      return;
+    }
+    const command = `ssh -i ~/.ssh/${keyName} -p ${port} ${user}@${host}`;
+    await navigator.clipboard.writeText(command);
+    toast.success("SSH command copied");
+  };
+
   if (loading || workspaceLoading || !user) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -200,12 +257,33 @@ const Compute = () => {
     <ConsoleLayout
       title="Compute"
       actions={
-        <Button size="sm" onClick={() => setShowCreate(true)} className="gap-2">
+        <Button
+          size="sm"
+          onClick={() => setShowCreate(true)}
+          className="gap-2"
+          disabled={!realProvisioningEnabled}
+          title={
+            realProvisioningEnabled
+              ? "Launch Instance"
+              : "Set VITE_PROVIDER_API_BASE_URL to enable real provisioning"
+          }
+        >
           <Plus className="h-4 w-4" /> Launch Instance
         </Button>
       }
     >
       <div className="max-w-6xl mx-auto px-6 py-8">
+        {!realProvisioningEnabled && (
+          <Card className="mb-6 border-yellow-500/40 bg-yellow-500/5">
+            <CardContent className="py-4 text-sm">
+              <p className="text-foreground font-medium">Real provisioning is not enabled.</p>
+              <p className="text-muted-foreground mt-1">
+                Set <code>VITE_PROVIDER_API_BASE_URL</code> and configure a provider token in Developers to create
+                and connect to real instances.
+              </p>
+            </CardContent>
+          </Card>
+        )}
         {/* Create Instance Panel */}
         {showCreate && (
           <Card className="mb-8 border-primary/30">
@@ -329,7 +407,16 @@ const Compute = () => {
                 <Server className="h-12 w-12 text-muted-foreground mb-4" />
                 <h3 className="font-heading font-semibold text-foreground mb-2">No instances yet</h3>
                 <p className="text-sm text-muted-foreground mb-6">Launch your first virtual machine to get started.</p>
-                <Button onClick={() => setShowCreate(true)} className="gap-2">
+                <Button
+                  onClick={() => setShowCreate(true)}
+                  className="gap-2"
+                  disabled={!realProvisioningEnabled}
+                  title={
+                    realProvisioningEnabled
+                      ? "Launch Instance"
+                      : "Set VITE_PROVIDER_API_BASE_URL to enable real provisioning"
+                  }
+                >
                   <Plus className="h-4 w-4" /> Launch Instance
                 </Button>
               </CardContent>
@@ -357,14 +444,35 @@ const Compute = () => {
                       </div>
 
                       <div className="flex items-center gap-3">
-                        {vm.ip_address && (
+                        {getHost(vm) && (
                           <span className="text-xs font-mono text-muted-foreground bg-secondary px-2 py-1 rounded">
-                            {vm.ip_address}
+                            {getHost(vm)}
                           </span>
                         )}
+                        <span className="text-xs text-muted-foreground bg-secondary px-2 py-1 rounded capitalize">
+                          {getConnectivity(vm)}
+                        </span>
+                        <span
+                          className={`text-xs px-2 py-1 rounded capitalize ${
+                            isConnectReady(vm)
+                              ? "text-green-400 bg-green-400/10"
+                              : "text-muted-foreground bg-muted"
+                          }`}
+                        >
+                          {isConnectReady(vm) ? "connect-ready" : "connect-pending"}
+                        </span>
                         <span className={`text-xs px-2.5 py-1 rounded-full font-medium capitalize ${STATUS_COLORS[vm.status] || "text-muted-foreground bg-muted"}`}>
                           {vm.status}
                         </span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => copySshCommand(vm)}
+                          disabled={!isConnectReady(vm)}
+                          title="Copy SSH command"
+                        >
+                          <Copy className="h-4 w-4 text-muted-foreground" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -382,6 +490,41 @@ const Compute = () => {
                         </Button>
                       </div>
                     </div>
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                      <div className="rounded border border-border bg-secondary px-2.5 py-2">
+                        <span className="text-muted-foreground">Host</span>
+                        <p className="font-mono text-foreground mt-0.5">{getHost(vm) ?? "Pending..."}</p>
+                      </div>
+                      <div className="rounded border border-border bg-secondary px-2.5 py-2">
+                        <span className="text-muted-foreground">SSH User</span>
+                        <p className="font-mono text-foreground mt-0.5">{getSshUser(vm) ?? "Pending from provider..."}</p>
+                      </div>
+                      <div className="rounded border border-border bg-secondary px-2.5 py-2">
+                        <span className="text-muted-foreground">Port</span>
+                        <p className="font-mono text-foreground mt-0.5">{getSshPort(vm) ?? "Pending from provider..."}</p>
+                      </div>
+                    </div>
+                    <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                      <div className="rounded border border-border bg-secondary px-2.5 py-2">
+                        <span className="text-muted-foreground">Auth Method</span>
+                        <p className="font-mono text-foreground mt-0.5">{getAuthMethod(vm) ?? "Pending from provider..."}</p>
+                      </div>
+                      <div className="rounded border border-border bg-secondary px-2.5 py-2">
+                        <span className="text-muted-foreground">Credentials</span>
+                        <p className="text-foreground mt-0.5">
+                          {getAuthMethod(vm) === "password"
+                            ? "Password managed by provider (not stored in console)"
+                            : getSshKeyName(vm)
+                              ? `Use SSH key ~/.ssh/${getSshKeyName(vm)}`
+                              : "SSH key name pending from provider"}
+                        </p>
+                      </div>
+                    </div>
+                    {getConnectivity(vm) !== "public" && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Install your mesh client and join the org network before connecting.
+                      </p>
+                    )}
                   </CardContent>
                 </Card>
               ))}

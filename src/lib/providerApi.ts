@@ -34,6 +34,14 @@ export type ProviderCompute = {
   status: string;
   public_ip: string | null;
   private_ip: string | null;
+  access?: {
+    ssh_user?: string;
+    ssh_port?: number;
+    connectivity?: "public" | "private-mesh" | "site-local" | string;
+    host?: string;
+    auth_method?: "ssh-key" | "password" | string;
+    ssh_key_name?: string;
+  };
 };
 
 export type ProviderDatabase = {
