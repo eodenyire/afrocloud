@@ -66,13 +66,22 @@ type VM = {
   tags?: Record<string, string>;
 };
 
-const getConnectivity = (vm: VM) => vm.tags?.connectivity ?? "public";
-const getSshUser = (vm: VM) => vm.tags?.ssh_user ?? "ubuntu";
-const getSshPort = (vm: VM) => Number(vm.tags?.ssh_port ?? "22");
+const getConnectivity = (vm: VM) => vm.tags?.connectivity ?? "unknown";
+const getSshUser = (vm: VM) => vm.tags?.ssh_user ?? null;
+const getSshPort = (vm: VM) => (vm.tags?.ssh_port ? Number(vm.tags.ssh_port) : null);
 const getHost = (vm: VM) => vm.tags?.connect_host ?? vm.ip_address;
-const getAuthMethod = (vm: VM) => vm.tags?.auth_method ?? "ssh-key";
-const getSshKeyName = (vm: VM) => vm.tags?.ssh_key_name ?? "ac_default";
-const isConnectReady = (vm: VM) => Boolean(getHost(vm)) && vm.status === "running";
+const getAuthMethod = (vm: VM) => vm.tags?.auth_method ?? null;
+const getSshKeyName = (vm: VM) => vm.tags?.ssh_key_name ?? null;
+const isConnectReady = (vm: VM) => {
+  if (vm.status !== "running") return false;
+  const host = getHost(vm);
+  const user = getSshUser(vm);
+  const port = getSshPort(vm);
+  const auth = getAuthMethod(vm);
+  if (!host || !user || !port || !auth) return false;
+  if (auth === "ssh-key") return Boolean(getSshKeyName(vm));
+  return true;
+};
 
 const Compute = () => {
   const { user, loading } = useAuth();
@@ -134,6 +143,16 @@ const Compute = () => {
         os_image: osImage,
       });
 
+      const connectionTags: Record<string, string> = { provider_id: providerVm.provider_id };
+      if (providerVm.access?.ssh_user) connectionTags.ssh_user = providerVm.access.ssh_user;
+      if (providerVm.access?.ssh_port) connectionTags.ssh_port = String(providerVm.access.ssh_port);
+      if (providerVm.access?.connectivity) connectionTags.connectivity = providerVm.access.connectivity;
+      if (providerVm.access?.auth_method) connectionTags.auth_method = providerVm.access.auth_method;
+      if (providerVm.access?.ssh_key_name) connectionTags.ssh_key_name = providerVm.access.ssh_key_name;
+      if (providerVm.access?.host) connectionTags.connect_host = providerVm.access.host;
+      if (!connectionTags.connect_host && providerVm.public_ip) connectionTags.connect_host = providerVm.public_ip;
+      if (!connectionTags.connect_host && providerVm.private_ip) connectionTags.connect_host = providerVm.private_ip;
+
       await createComputeInstance(
         { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
         {
@@ -146,19 +165,7 @@ const Compute = () => {
           os_image: osImage,
           status: providerVm.status || "provisioning",
           ip_address: providerVm.public_ip ?? providerVm.private_ip ?? null,
-          tags: {
-            provider_id: providerVm.provider_id,
-            ssh_user: providerVm.access?.ssh_user ?? "ubuntu",
-            ssh_port: String(providerVm.access?.ssh_port ?? 22),
-            connectivity: providerVm.access?.connectivity ?? "public",
-            auth_method: providerVm.access?.auth_method ?? "ssh-key",
-            ssh_key_name: providerVm.access?.ssh_key_name ?? "ac_default",
-            connect_host:
-              providerVm.access?.host ??
-              providerVm.public_ip ??
-              providerVm.private_ip ??
-              "",
-          },
+          tags: connectionTags,
           price: machine.price,
         }
       );
@@ -211,18 +218,29 @@ const Compute = () => {
 
   const copySshCommand = async (vm: VM) => {
     const host = getHost(vm);
+    const user = getSshUser(vm);
+    const port = getSshPort(vm);
+    const authMethod = getAuthMethod(vm);
     if (!host) {
       toast.error("No host available for this instance yet");
       return;
     }
-    if (getAuthMethod(vm) === "password") {
-      const command = `ssh -p ${getSshPort(vm)} ${getSshUser(vm)}@${host}`;
+    if (!user || !port || !authMethod) {
+      toast.error("Connection details are still pending from the provider");
+      return;
+    }
+    if (authMethod === "password") {
+      const command = `ssh -p ${port} ${user}@${host}`;
       await navigator.clipboard.writeText(command);
       toast.success("SSH command copied");
       return;
     }
-
-    const command = `ssh -i ~/.ssh/${getSshKeyName(vm)} -p ${getSshPort(vm)} ${getSshUser(vm)}@${host}`;
+    const keyName = getSshKeyName(vm);
+    if (!keyName) {
+      toast.error("SSH key name is pending from the provider");
+      return;
+    }
+    const command = `ssh -i ~/.ssh/${keyName} -p ${port} ${user}@${host}`;
     await navigator.clipboard.writeText(command);
     toast.success("SSH command copied");
   };
@@ -450,7 +468,7 @@ const Compute = () => {
                           variant="ghost"
                           size="icon"
                           onClick={() => copySshCommand(vm)}
-                          disabled={!getHost(vm)}
+                          disabled={!isConnectReady(vm)}
                           title="Copy SSH command"
                         >
                           <Copy className="h-4 w-4 text-muted-foreground" />
@@ -479,24 +497,26 @@ const Compute = () => {
                       </div>
                       <div className="rounded border border-border bg-secondary px-2.5 py-2">
                         <span className="text-muted-foreground">SSH User</span>
-                        <p className="font-mono text-foreground mt-0.5">{getSshUser(vm)}</p>
+                        <p className="font-mono text-foreground mt-0.5">{getSshUser(vm) ?? "Pending from provider..."}</p>
                       </div>
                       <div className="rounded border border-border bg-secondary px-2.5 py-2">
                         <span className="text-muted-foreground">Port</span>
-                        <p className="font-mono text-foreground mt-0.5">{getSshPort(vm)}</p>
+                        <p className="font-mono text-foreground mt-0.5">{getSshPort(vm) ?? "Pending from provider..."}</p>
                       </div>
                     </div>
                     <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
                       <div className="rounded border border-border bg-secondary px-2.5 py-2">
                         <span className="text-muted-foreground">Auth Method</span>
-                        <p className="font-mono text-foreground mt-0.5">{getAuthMethod(vm)}</p>
+                        <p className="font-mono text-foreground mt-0.5">{getAuthMethod(vm) ?? "Pending from provider..."}</p>
                       </div>
                       <div className="rounded border border-border bg-secondary px-2.5 py-2">
                         <span className="text-muted-foreground">Credentials</span>
                         <p className="text-foreground mt-0.5">
                           {getAuthMethod(vm) === "password"
                             ? "Password managed by provider (not stored in console)"
-                            : `Use SSH key ~/.ssh/${getSshKeyName(vm)}`}
+                            : getSshKeyName(vm)
+                              ? `Use SSH key ~/.ssh/${getSshKeyName(vm)}`
+                              : "SSH key name pending from provider"}
                         </p>
                       </div>
                     </div>
