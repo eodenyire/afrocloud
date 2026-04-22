@@ -17,7 +17,7 @@ import {
   updateComputeStatus,
 } from "@/lib/controlPlane";
 import { useResourcePoller } from "@/hooks/useResourcePoller";
-import { deleteComputeFromProvider, provisionCompute, startCompute, stopCompute } from "@/lib/providerApi";
+import { deleteComputeFromProvider, isProviderApiConfigured, provisionCompute, startCompute, stopCompute } from "@/lib/providerApi";
 
 const REGIONS = [
   { value: "nairobi", label: "Nairobi, Kenya" },
@@ -97,6 +97,7 @@ const Compute = () => {
   const [region, setRegion] = useState("nairobi");
   const [machineType, setMachineType] = useState("ac-standard-1");
   const [osImage, setOsImage] = useState("ubuntu-22.04");
+  const realProvisioningEnabled = isProviderApiConfigured();
   const realProvisioningEnabled = Boolean(import.meta.env.VITE_PROVIDER_API_BASE_URL);
 
   useEffect(() => {
@@ -265,6 +266,7 @@ const Compute = () => {
           title={
             realProvisioningEnabled
               ? "Launch Instance"
+              : "Set provider URL in Developers or VITE_PROVIDER_API_BASE_URL"
               : "Set VITE_PROVIDER_API_BASE_URL to enable real provisioning"
           }
         >
@@ -278,6 +280,8 @@ const Compute = () => {
             <CardContent className="py-4 text-sm">
               <p className="text-foreground font-medium">Real provisioning is not enabled.</p>
               <p className="text-muted-foreground mt-1">
+                Set provider base URL in Developers (runtime) or <code>VITE_PROVIDER_API_BASE_URL</code> and
+                configure a provider token to create and connect to real instances.
                 Set <code>VITE_PROVIDER_API_BASE_URL</code> and configure a provider token in Developers to create
                 and connect to real instances.
               </p>
@@ -414,6 +418,7 @@ const Compute = () => {
                   title={
                     realProvisioningEnabled
                       ? "Launch Instance"
+                      : "Set provider URL in Developers or VITE_PROVIDER_API_BASE_URL"
                       : "Set VITE_PROVIDER_API_BASE_URL to enable real provisioning"
                   }
                 >
