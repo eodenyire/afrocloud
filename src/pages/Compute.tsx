@@ -7,9 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import {
   Cloud, Server, Plus, Power, PowerOff, Trash2,
-  Cpu, HardDrive, MemoryStick, Globe, Monitor, RefreshCw,
+  Cpu, HardDrive, MemoryStick, Globe, Monitor, RefreshCw, Terminal,
 } from "lucide-react";
 import { ConsoleLayout } from "@/components/ConsoleLayout";
+import { ConnectDialog, type ConnectTarget } from "@/components/ConnectDialog";
 import {
   createComputeInstance,
   deleteComputeInstance,
