@@ -170,8 +170,7 @@ const Settings = () => {
     if (!user) return;
     setTogglingMfa(true);
     const newValue = !mfaEnabled;
-    const { error } = await supabase
-      .from("profiles")
+    const { error } = await (supabase.from("profiles") as unknown as { update: (v: Record<string, unknown>) => { eq: (c: string, v: string) => Promise<{ error: Error | null }> } })
       .update({ mfa_enabled: newValue })
       .eq("id", user.id);
     if (error) toast.error("Failed to update MFA setting");
