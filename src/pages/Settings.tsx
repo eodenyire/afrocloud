@@ -64,17 +64,17 @@ const Settings = () => {
   useEffect(() => {
     if (user) setFullName(user.user_metadata?.full_name ?? "");
     if (organization) setOrgName(organization.name);
-    if (profile) setMfaEnabled(profile.mfa_enabled ?? false);
+    if (profile) setMfaEnabled((profile as { mfa_enabled?: boolean }).mfa_enabled ?? false);
   }, [user, organization, profile]);
 
   const fetchProviders = useCallback(async () => {
     if (!organization?.id) return;
-    const { data } = await supabase
+    const { data } = await (supabase as unknown as { from: (t: string) => { select: (c: string) => { eq: (col: string, val: string) => { order: (c: string, o: { ascending: boolean }) => Promise<{ data: unknown[] | null }> } } } })
       .from("provider_accounts")
       .select("*")
       .eq("org_id", organization.id)
       .order("created_at", { ascending: false });
-    setProviders((data as ProviderAccount[]) ?? []);
+    setProviders(((data as unknown) as ProviderAccount[]) ?? []);
   }, [organization?.id]);
 
   const fetchSso = useCallback(async () => {
@@ -100,7 +100,7 @@ const Settings = () => {
   const handleSaveOrg = async () => {
     if (!organization?.id) return;
     setSavingOrg(true);
-    const { error } = await supabase
+    const { error } = await (supabase as unknown as { from: (t: string) => { update: (v: Record<string, unknown>) => { eq: (c: string, v: string) => Promise<{ error: Error | null }> } } })
       .from("organizations")
       .update({ name: orgName.trim() })
       .eq("id", organization.id);
@@ -118,14 +118,16 @@ const Settings = () => {
       return;
     }
     setAddingProvider(true);
-    const { error } = await supabase.from("provider_accounts").insert({
-      org_id: organization.id,
-      project_id: project?.id ?? null,
-      provider: providerType,
-      alias: providerAlias.trim(),
-      status: "pending",
-      credentials: {},
-    });
+    const { error } = await (supabase as unknown as { from: (t: string) => { insert: (v: Record<string, unknown>) => Promise<{ error: Error | null }> } })
+      .from("provider_accounts")
+      .insert({
+        org_id: organization.id,
+        project_id: project?.id ?? null,
+        provider: providerType,
+        alias: providerAlias.trim(),
+        status: "pending",
+        credentials: {},
+      });
     if (error) toast.error("Failed to add provider account");
     else {
       toast.success("Provider account registered (credentials required)");
@@ -136,7 +138,10 @@ const Settings = () => {
   };
 
   const handleDeleteProvider = async (id: string) => {
-    const { error } = await supabase.from("provider_accounts").delete().eq("id", id);
+    const { error } = await (supabase as unknown as { from: (t: string) => { delete: () => { eq: (c: string, v: string) => Promise<{ error: Error | null }> } } })
+      .from("provider_accounts")
+      .delete()
+      .eq("id", id);
     if (error) toast.error("Failed to remove provider");
     else {
       toast.success("Provider removed");
