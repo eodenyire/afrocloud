@@ -363,9 +363,17 @@ const EdgeNodes = () => {
                               <Power className="h-4 w-4 text-green-400" />
                             )}
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => deleteNode(node)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                          <ConfirmDialog
+                            title={`Delete edge node "${node.name}"?`}
+                            description="This permanently removes the edge node and stops serving traffic from this location. This action cannot be undone."
+                            confirmLabel="Delete node"
+                            onConfirm={() => deleteNode(node)}
+                            trigger={
+                              <Button variant="ghost" size="icon">
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            }
+                          />
                         </div>
                       </div>
                     </CardContent>

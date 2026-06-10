@@ -453,9 +453,17 @@ const Compute = () => {
                             <Power className="h-4 w-4 text-green-400" />
                           )}
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => deleteVM(vm)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                        <ConfirmDialog
+                          title={`Delete VM "${vm.name}"?`}
+                          description="This permanently destroys the virtual machine on the upstream provider and removes its record. Attached volumes and snapshots may be lost. This action cannot be undone."
+                          confirmLabel="Delete VM"
+                          onConfirm={() => deleteVM(vm)}
+                          trigger={
+                            <Button variant="ghost" size="icon">
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          }
+                        />
                       </div>
                     </div>
                   </CardContent>
