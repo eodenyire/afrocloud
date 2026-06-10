@@ -61,6 +61,7 @@ type DBInstance = {
   status: string;
   connection_string: string | null;
   port: number | null;
+  schema_name: string | null;
   created_at: string | null;
 };
 
