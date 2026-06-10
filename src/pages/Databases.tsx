@@ -91,7 +91,7 @@ const Databases = () => {
     setFetching(true);
     const { data, error } = await listDatabaseInstances(user.id);
     if (error) toast.error("Failed to load databases");
-    else setInstances(data || []);
+    else setInstances((data as any) || []);
     setFetching(false);
   };
 
