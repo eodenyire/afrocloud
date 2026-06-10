@@ -173,6 +173,9 @@ const Databases = () => {
   const deleteInstance = async (db: DBInstance) => {
     try {
       if (!organization?.id) throw new Error("Organization context missing");
+      if (db.engine === "postgresql" && db.schema_name) {
+        try { await dropDatabase(db.id); } catch { /* ignore — still drop the row */ }
+      }
       await deleteDatabaseInstance(
         { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
         db.id
