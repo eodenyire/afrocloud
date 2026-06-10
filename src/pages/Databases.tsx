@@ -439,6 +439,11 @@ const Databases = () => {
         onOpenChange={(v) => !v && setConnectTarget(null)}
         target={connectTarget}
       />
+      <SqlConsole
+        open={!!sqlConsoleFor}
+        onOpenChange={(v) => !v && setSqlConsoleFor(null)}
+        instance={sqlConsoleFor}
+      />
     </ConsoleLayout>
   );
 };
