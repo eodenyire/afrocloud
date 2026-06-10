@@ -58,9 +58,9 @@ export const SqlConsole = ({ open, onOpenChange, instance }: Props) => {
     setResults(null);
     setDuration(null);
     try {
-      const res = await runDatabaseQuery(instance.id, sql);
+      const res: any = await runDatabaseQuery(instance.id, sql);
       setDuration(res.durationMs);
-      if (res.ok === true) {
+      if (res.ok) {
         setResults(res.results);
         toast.success(`Ran ${res.results.length} statement(s) in ${res.durationMs} ms`);
         refreshTables();
