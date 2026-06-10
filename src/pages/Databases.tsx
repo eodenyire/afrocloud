@@ -116,7 +116,7 @@ const Databases = () => {
         : `redis://default:****@${host}:${eng.defaultPort}`;
 
     try {
-      await createDatabaseInstance(
+      const created = await createDatabaseInstance(
         { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
         {
           name: name.trim(),
@@ -134,7 +134,19 @@ const Databases = () => {
       toast.success("Database is provisioning…");
       setShowCreate(false);
       setName("");
-      setTimeout(() => fetchInstances(), 3000);
+
+      // For PostgreSQL we provision a real schema + role in Lovable Cloud Postgres.
+      if (engine === "postgresql" && created?.id) {
+        try {
+          await provisionDatabase(created.id);
+          toast.success("Database ready — open the SQL Console to start.");
+        } catch (err: any) {
+          toast.error(`Provisioning failed: ${err?.message ?? "unknown error"}`);
+        }
+      } else {
+        // Non-Postgres engines: keep the simulated lifecycle for now.
+        setTimeout(() => fetchInstances(), 3000);
+      }
       fetchInstances();
     } catch {
       toast.error("Failed to create database");
