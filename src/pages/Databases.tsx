@@ -18,6 +18,9 @@ import {
   listDatabaseInstances,
   updateDatabaseStatus,
 } from "@/lib/controlPlane";
+import { provisionDatabase, dropDatabase } from "@/lib/dbConsole";
+import { SqlConsole } from "@/components/SqlConsole";
+import { Code2 } from "lucide-react";
 
 const REGIONS = [
   { value: "nairobi", label: "Nairobi, Kenya" },
