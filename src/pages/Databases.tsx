@@ -10,6 +10,7 @@ import {
   Globe, RefreshCw, HardDrive, Plug, Terminal,
 } from "lucide-react";
 import { ConsoleLayout } from "@/components/ConsoleLayout";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ConnectDialog, type ConnectTarget } from "@/components/ConnectDialog";
 import {
   createDatabaseInstance,
@@ -381,9 +382,17 @@ const Databases = () => {
                           <Button variant="ghost" size="icon" onClick={() => toggleInstance(db)} disabled={db.status === "provisioning"}>
                             {db.status === "running" ? <PowerOff className="h-4 w-4 text-muted-foreground" /> : <Power className="h-4 w-4 text-green-400" />}
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => deleteInstance(db)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                          <ConfirmDialog
+                            title={`Delete database "${db.name}"?`}
+                            description="This permanently destroys the database instance and all of its data. Make sure you have a backup. This action cannot be undone."
+                            confirmLabel="Delete database"
+                            onConfirm={() => deleteInstance(db)}
+                            trigger={
+                              <Button variant="ghost" size="icon">
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            }
+                          />
                         </div>
                       </div>
                     </CardContent>

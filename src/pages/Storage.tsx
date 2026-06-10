@@ -10,6 +10,7 @@ import {
   RefreshCw, Lock, Unlock, FolderOpen, Upload, File, X,
 } from "lucide-react";
 import { ConsoleLayout } from "@/components/ConsoleLayout";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   createStorageBucket,
   createStorageObject,
@@ -328,9 +329,17 @@ const Storage = () => {
                             </p>
                           </div>
                         </div>
-                        <Button variant="ghost" size="icon" onClick={() => deleteObject(obj)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                        <ConfirmDialog
+                          title={`Delete object "${obj.key}"?`}
+                          description="This permanently removes the object from the bucket. This action cannot be undone."
+                          confirmLabel="Delete object"
+                          onConfirm={() => deleteObject(obj)}
+                          trigger={
+                            <Button variant="ghost" size="icon">
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          }
+                        />
                       </div>
                     </CardContent>
                   </Card>
@@ -492,13 +501,19 @@ const Storage = () => {
                             <span className="text-xs px-2.5 py-1 rounded-full font-medium capitalize text-green-400 bg-green-400/10">
                               {bucket.status}
                             </span>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={(e) => { e.stopPropagation(); deleteBucket(bucket); }}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <ConfirmDialog
+                                title={`Delete bucket "${bucket.name}"?`}
+                                description="This permanently destroys the bucket and every object inside it. This action cannot be undone."
+                                confirmLabel="Delete bucket"
+                                onConfirm={() => deleteBucket(bucket)}
+                                trigger={
+                                  <Button variant="ghost" size="icon">
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                }
+                              />
+                            </div>
                           </div>
                         </div>
                       </CardContent>
