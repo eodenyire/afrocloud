@@ -18,6 +18,9 @@ import {
   listDatabaseInstances,
   updateDatabaseStatus,
 } from "@/lib/controlPlane";
+import { provisionDatabase, dropDatabase } from "@/lib/dbConsole";
+import { SqlConsole } from "@/components/SqlConsole";
+import { Code2 } from "lucide-react";
 
 const REGIONS = [
   { value: "nairobi", label: "Nairobi, Kenya" },
@@ -58,6 +61,7 @@ type DBInstance = {
   status: string;
   connection_string: string | null;
   port: number | null;
+  schema_name: string | null;
   created_at: string | null;
 };
 
@@ -87,7 +91,7 @@ const Databases = () => {
     setFetching(true);
     const { data, error } = await listDatabaseInstances(user.id);
     if (error) toast.error("Failed to load databases");
-    else setInstances(data || []);
+    else setInstances((data as any) || []);
     setFetching(false);
   };
 
@@ -97,6 +101,7 @@ const Databases = () => {
 
   const selectedEngine = ENGINES.find((e) => e.value === engine)!;
   const selectedPlan = PLANS.find((p) => p.value === plan)!;
+  const [sqlConsoleFor, setSqlConsoleFor] = useState<DBInstance | null>(null);
 
   const handleCreate = async () => {
     if (!name.trim()) { toast.error("Database name is required"); return; }
@@ -112,7 +117,7 @@ const Databases = () => {
         : `redis://default:****@${host}:${eng.defaultPort}`;
 
     try {
-      await createDatabaseInstance(
+      const created = await createDatabaseInstance(
         { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
         {
           name: name.trim(),
@@ -130,7 +135,19 @@ const Databases = () => {
       toast.success("Database is provisioning…");
       setShowCreate(false);
       setName("");
-      setTimeout(() => fetchInstances(), 3000);
+
+      // For PostgreSQL we provision a real schema + role in Lovable Cloud Postgres.
+      if (engine === "postgresql" && created?.id) {
+        try {
+          await provisionDatabase(created.id);
+          toast.success("Database ready — open the SQL Console to start.");
+        } catch (err: any) {
+          toast.error(`Provisioning failed: ${err?.message ?? "unknown error"}`);
+        }
+      } else {
+        // Non-Postgres engines: keep the simulated lifecycle for now.
+        setTimeout(() => fetchInstances(), 3000);
+      }
       fetchInstances();
     } catch {
       toast.error("Failed to create database");
@@ -157,6 +174,9 @@ const Databases = () => {
   const deleteInstance = async (db: DBInstance) => {
     try {
       if (!organization?.id) throw new Error("Organization context missing");
+      if (db.engine === "postgresql" && db.schema_name) {
+        try { await dropDatabase(db.id); } catch { /* ignore — still drop the row */ }
+      }
       await deleteDatabaseInstance(
         { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
         db.id
@@ -358,6 +378,17 @@ const Databases = () => {
                         </div>
 
                         <div className="flex items-center gap-3">
+                          {db.engine === "postgresql" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-1.5"
+                              onClick={() => setSqlConsoleFor(db)}
+                              disabled={db.status !== "running"}
+                            >
+                              <Code2 className="h-3.5 w-3.5" /> SQL
+                            </Button>
+                          )}
                           <Button
                             variant="outline"
                             size="sm"
@@ -407,6 +438,11 @@ const Databases = () => {
         open={!!connectTarget}
         onOpenChange={(v) => !v && setConnectTarget(null)}
         target={connectTarget}
+      />
+      <SqlConsole
+        open={!!sqlConsoleFor}
+        onOpenChange={(v) => !v && setSqlConsoleFor(null)}
+        instance={sqlConsoleFor}
       />
     </ConsoleLayout>
   );

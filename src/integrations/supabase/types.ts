@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           connection_string: string | null
           created_at: string | null
+          db_role: string | null
           engine: string
           id: string
           name: string
@@ -26,6 +27,7 @@ export type Database = {
           provider: string
           provider_resource_id: string | null
           region: string
+          schema_name: string | null
           status: string
           storage_gb: number
           updated_at: string | null
@@ -35,6 +37,7 @@ export type Database = {
         Insert: {
           connection_string?: string | null
           created_at?: string | null
+          db_role?: string | null
           engine?: string
           id?: string
           name: string
@@ -43,6 +46,7 @@ export type Database = {
           provider?: string
           provider_resource_id?: string | null
           region?: string
+          schema_name?: string | null
           status?: string
           storage_gb?: number
           updated_at?: string | null
@@ -52,6 +56,7 @@ export type Database = {
         Update: {
           connection_string?: string | null
           created_at?: string | null
+          db_role?: string | null
           engine?: string
           id?: string
           name?: string
@@ -60,6 +65,7 @@ export type Database = {
           provider?: string
           provider_resource_id?: string | null
           region?: string
+          schema_name?: string | null
           status?: string
           storage_gb?: number
           updated_at?: string | null
