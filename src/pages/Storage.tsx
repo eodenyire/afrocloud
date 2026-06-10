@@ -10,6 +10,7 @@ import {
   RefreshCw, Lock, Unlock, FolderOpen, Upload, File, X,
 } from "lucide-react";
 import { ConsoleLayout } from "@/components/ConsoleLayout";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   createStorageBucket,
   createStorageObject,

@@ -11,6 +11,7 @@ import {
   Radio, Signal,
 } from "lucide-react";
 import { ConsoleLayout } from "@/components/ConsoleLayout";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   createEdgeNode,
   deleteEdgeNode,

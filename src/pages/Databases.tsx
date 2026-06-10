@@ -10,6 +10,7 @@ import {
   Globe, RefreshCw, HardDrive, Plug, Terminal,
 } from "lucide-react";
 import { ConsoleLayout } from "@/components/ConsoleLayout";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ConnectDialog, type ConnectTarget } from "@/components/ConnectDialog";
 import {
   createDatabaseInstance,

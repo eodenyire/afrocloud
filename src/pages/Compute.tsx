@@ -10,6 +10,7 @@ import {
   Cpu, HardDrive, MemoryStick, Globe, Monitor, RefreshCw, Terminal,
 } from "lucide-react";
 import { ConsoleLayout } from "@/components/ConsoleLayout";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ConnectDialog, type ConnectTarget } from "@/components/ConnectDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { provision, type Provider } from "@/lib/provision";
