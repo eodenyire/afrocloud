@@ -101,6 +101,7 @@ const Databases = () => {
 
   const selectedEngine = ENGINES.find((e) => e.value === engine)!;
   const selectedPlan = PLANS.find((p) => p.value === plan)!;
+  const [sqlConsoleFor, setSqlConsoleFor] = useState<DBInstance | null>(null);
 
   const handleCreate = async () => {
     if (!name.trim()) { toast.error("Database name is required"); return; }
