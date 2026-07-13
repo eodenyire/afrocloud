@@ -1,16 +1,17 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import {
   Cloud, HardDrive, Plus, Trash2, Globe,
-  RefreshCw, Lock, Unlock, FolderOpen, Upload, File, X,
+  RefreshCw, Lock, Unlock, FolderOpen, Upload, File, Download,
 } from "lucide-react";
 import { ConsoleLayout } from "@/components/ConsoleLayout";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { supabase } from "@/integrations/supabase/client";
 import {
   createStorageBucket,
   createStorageObject,
@@ -20,6 +21,10 @@ import {
   listStorageObjects,
   updateStorageBucketStats,
 } from "@/lib/controlPlane";
+
+const STORAGE_BUCKET = "africloud";
+const objectPath = (userId: string, bucketRowId: string, key: string) =>
+  `${userId}/${bucketRowId}/${key.replace(/^\/+/, "")}`;
 
 const REGIONS = [
   { value: "nairobi", label: "Nairobi, Kenya" },
