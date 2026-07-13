@@ -1,16 +1,17 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import {
   Cloud, HardDrive, Plus, Trash2, Globe,
-  RefreshCw, Lock, Unlock, FolderOpen, Upload, File, X,
+  RefreshCw, Lock, Unlock, FolderOpen, Upload, File, Download,
 } from "lucide-react";
 import { ConsoleLayout } from "@/components/ConsoleLayout";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { supabase } from "@/integrations/supabase/client";
 import {
   createStorageBucket,
   createStorageObject,
@@ -20,6 +21,10 @@ import {
   listStorageObjects,
   updateStorageBucketStats,
 } from "@/lib/controlPlane";
+
+const STORAGE_BUCKET = "africloud";
+const objectPath = (userId: string, bucketRowId: string, key: string) =>
+  `${userId}/${bucketRowId}/${key.replace(/^\/+/, "")}`;
 
 const REGIONS = [
   { value: "nairobi", label: "Nairobi, Kenya" },
@@ -86,8 +91,9 @@ const Storage = () => {
   const [fetchingObjects, setFetchingObjects] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [uploadKey, setUploadKey] = useState("");
-  const [uploadSize, setUploadSize] = useState("");
-  const [uploadType, setUploadType] = useState("application/octet-stream");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!loading && !user) navigate("/auth");
@@ -152,9 +158,16 @@ const Storage = () => {
 
   const deleteBucket = async (bucket: Bucket) => {
     try {
-      if (!organization?.id) throw new Error("Organization context missing");
+      if (!organization?.id || !user) throw new Error("Organization context missing");
+      // Remove all storage files under this bucket's prefix first
+      const prefix = `${user.id}/${bucket.id}`;
+      const { data: files } = await supabase.storage.from(STORAGE_BUCKET).list(prefix, { limit: 1000 });
+      if (files && files.length > 0) {
+        const paths = files.map((f) => `${prefix}/${f.name}`);
+        await supabase.storage.from(STORAGE_BUCKET).remove(paths);
+      }
       await deleteStorageBucket(
-        { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
+        { userId: user.id, orgId: organization.id, projectId: project?.id ?? null },
         bucket.id
       );
       toast.success("Bucket deleted");
@@ -165,35 +178,75 @@ const Storage = () => {
     }
   };
 
-  const simulateUpload = async () => {
-    if (!uploadKey.trim()) { toast.error("Object key is required"); return; }
-    if (!selectedBucket) return;
-    const sizeNum = parseInt(uploadSize) || Math.floor(Math.random() * 10000000);
+  const handleUpload = async () => {
+    if (!selectedBucket || !user) return;
+    if (!uploadFile) { toast.error("Select a file to upload"); return; }
+    const key = (uploadKey.trim() || uploadFile.name).replace(/^\/+/, "");
+    if (!key) { toast.error("Object key is required"); return; }
+
+    setUploading(true);
+    const path = objectPath(user.id, selectedBucket.id, key);
+    const contentType = uploadFile.type || "application/octet-stream";
     try {
-      await createStorageObject({
+      const { error: uploadErr } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .upload(path, uploadFile, { contentType, upsert: true });
+      if (uploadErr) throw uploadErr;
+
+      // Refresh metadata row (remove any prior entry for this key, then insert fresh)
+      await supabase
+        .from("storage_objects")
+        .delete()
+        .eq("bucket_id", selectedBucket.id)
+        .eq("key", key);
+      const { error: metaErr } = await createStorageObject({
         bucketId: selectedBucket.id,
-        userId: user!.id,
-        key: uploadKey.trim(),
-        sizeBytes: sizeNum,
-        contentType: uploadType,
+        userId: user.id,
+        key,
+        sizeBytes: uploadFile.size,
+        contentType,
       });
+      if (metaErr) throw metaErr;
+
       await updateStorageBucketStats(selectedBucket.id, {
         objectCount: selectedBucket.object_count + 1,
-        sizeBytes: selectedBucket.size_bytes + sizeNum,
+        sizeBytes: selectedBucket.size_bytes + uploadFile.size,
       });
       toast.success("Object uploaded");
       setShowUpload(false);
       setUploadKey("");
-      setUploadSize("");
+      setUploadFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       fetchObjects(selectedBucket.id);
       fetchBuckets();
-    } catch {
-      toast.error("Failed to upload object");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to upload object";
+      toast.error(message);
+    }
+    setUploading(false);
+  };
+
+  const downloadObject = async (obj: StorageObject) => {
+    if (!user) return;
+    try {
+      const path = objectPath(user.id, obj.bucket_id, obj.key);
+      const { data, error } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .createSignedUrl(path, 60, { download: obj.key.split("/").pop() || obj.key });
+      if (error || !data?.signedUrl) throw error ?? new Error("No signed URL");
+      window.open(data.signedUrl, "_blank", "noopener");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to download";
+      toast.error(message);
     }
   };
 
   const deleteObject = async (obj: StorageObject) => {
+    if (!user) return;
     try {
+      const path = objectPath(user.id, obj.bucket_id, obj.key);
+      const { error: rmErr } = await supabase.storage.from(STORAGE_BUCKET).remove([path]);
+      if (rmErr) throw rmErr;
       await deleteStorageObject(obj.id);
       if (selectedBucket) {
         await updateStorageBucketStats(selectedBucket.id, {
@@ -204,8 +257,9 @@ const Storage = () => {
       toast.success("Object deleted");
       if (selectedBucket) fetchObjects(selectedBucket.id);
       fetchBuckets();
-    } catch {
-      toast.error("Failed to delete object");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to delete object";
+      toast.error(message);
     }
   };
 
@@ -265,6 +319,24 @@ const Storage = () => {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
+                    <label className="text-sm text-muted-foreground block mb-2">File</label>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] ?? null;
+                        setUploadFile(f);
+                        if (f && !uploadKey.trim()) setUploadKey(f.name);
+                      }}
+                      className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground file:mr-4 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-primary-foreground file:text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    {uploadFile && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {formatBytes(uploadFile.size)} · {uploadFile.type || "application/octet-stream"}
+                      </p>
+                    )}
+                  </div>
+                  <div>
                     <label className="text-sm text-muted-foreground block mb-2">Object Key (path)</label>
                     <input
                       value={uploadKey}
@@ -272,30 +344,13 @@ const Storage = () => {
                       placeholder="data/exports/report.csv"
                       className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                     />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-sm text-muted-foreground block mb-2">Size (bytes)</label>
-                      <input
-                        value={uploadSize}
-                        onChange={(e) => setUploadSize(e.target.value)}
-                        placeholder="Auto-generated"
-                        className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm text-muted-foreground block mb-2">Content Type</label>
-                      <input
-                        value={uploadType}
-                        onChange={(e) => setUploadType(e.target.value)}
-                        placeholder="application/octet-stream"
-                        className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                      />
-                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Defaults to the file name. Use slashes for folders.</p>
                   </div>
                   <div className="flex justify-end gap-3">
-                    <Button variant="outline" onClick={() => setShowUpload(false)}>Cancel</Button>
-                    <Button onClick={simulateUpload}>Upload</Button>
+                    <Button variant="outline" onClick={() => { setShowUpload(false); setUploadFile(null); setUploadKey(""); }}>Cancel</Button>
+                    <Button onClick={handleUpload} disabled={uploading || !uploadFile}>
+                      {uploading ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Upload"}
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -329,17 +384,22 @@ const Storage = () => {
                             </p>
                           </div>
                         </div>
-                        <ConfirmDialog
-                          title={`Delete object "${obj.key}"?`}
-                          description="This permanently removes the object from the bucket. This action cannot be undone."
-                          confirmLabel="Delete object"
-                          onConfirm={() => deleteObject(obj)}
-                          trigger={
-                            <Button variant="ghost" size="icon">
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          }
-                        />
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => downloadObject(obj)} title="Download">
+                            <Download className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                          <ConfirmDialog
+                            title={`Delete object "${obj.key}"?`}
+                            description="This permanently removes the object from the bucket. This action cannot be undone."
+                            confirmLabel="Delete object"
+                            onConfirm={() => deleteObject(obj)}
+                            trigger={
+                              <Button variant="ghost" size="icon">
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            }
+                          />
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
