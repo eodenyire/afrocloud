@@ -377,17 +377,22 @@ const Storage = () => {
                             </p>
                           </div>
                         </div>
-                        <ConfirmDialog
-                          title={`Delete object "${obj.key}"?`}
-                          description="This permanently removes the object from the bucket. This action cannot be undone."
-                          confirmLabel="Delete object"
-                          onConfirm={() => deleteObject(obj)}
-                          trigger={
-                            <Button variant="ghost" size="icon">
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          }
-                        />
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => downloadObject(obj)} title="Download">
+                            <Download className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                          <ConfirmDialog
+                            title={`Delete object "${obj.key}"?`}
+                            description="This permanently removes the object from the bucket. This action cannot be undone."
+                            confirmLabel="Delete object"
+                            onConfirm={() => deleteObject(obj)}
+                            trigger={
+                              <Button variant="ghost" size="icon">
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            }
+                          />
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
