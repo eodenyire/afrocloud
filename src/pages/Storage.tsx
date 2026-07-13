@@ -312,6 +312,24 @@ const Storage = () => {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
+                    <label className="text-sm text-muted-foreground block mb-2">File</label>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] ?? null;
+                        setUploadFile(f);
+                        if (f && !uploadKey.trim()) setUploadKey(f.name);
+                      }}
+                      className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground file:mr-4 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-primary-foreground file:text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    {uploadFile && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {formatBytes(uploadFile.size)} · {uploadFile.type || "application/octet-stream"}
+                      </p>
+                    )}
+                  </div>
+                  <div>
                     <label className="text-sm text-muted-foreground block mb-2">Object Key (path)</label>
                     <input
                       value={uploadKey}
@@ -319,30 +337,13 @@ const Storage = () => {
                       placeholder="data/exports/report.csv"
                       className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                     />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-sm text-muted-foreground block mb-2">Size (bytes)</label>
-                      <input
-                        value={uploadSize}
-                        onChange={(e) => setUploadSize(e.target.value)}
-                        placeholder="Auto-generated"
-                        className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm text-muted-foreground block mb-2">Content Type</label>
-                      <input
-                        value={uploadType}
-                        onChange={(e) => setUploadType(e.target.value)}
-                        placeholder="application/octet-stream"
-                        className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                      />
-                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Defaults to the file name. Use slashes for folders.</p>
                   </div>
                   <div className="flex justify-end gap-3">
-                    <Button variant="outline" onClick={() => setShowUpload(false)}>Cancel</Button>
-                    <Button onClick={simulateUpload}>Upload</Button>
+                    <Button variant="outline" onClick={() => { setShowUpload(false); setUploadFile(null); setUploadKey(""); }}>Cancel</Button>
+                    <Button onClick={handleUpload} disabled={uploading || !uploadFile}>
+                      {uploading ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Upload"}
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
