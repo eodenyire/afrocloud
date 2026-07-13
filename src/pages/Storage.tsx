@@ -171,35 +171,75 @@ const Storage = () => {
     }
   };
 
-  const simulateUpload = async () => {
-    if (!uploadKey.trim()) { toast.error("Object key is required"); return; }
-    if (!selectedBucket) return;
-    const sizeNum = parseInt(uploadSize) || Math.floor(Math.random() * 10000000);
+  const handleUpload = async () => {
+    if (!selectedBucket || !user) return;
+    if (!uploadFile) { toast.error("Select a file to upload"); return; }
+    const key = (uploadKey.trim() || uploadFile.name).replace(/^\/+/, "");
+    if (!key) { toast.error("Object key is required"); return; }
+
+    setUploading(true);
+    const path = objectPath(user.id, selectedBucket.id, key);
+    const contentType = uploadFile.type || "application/octet-stream";
     try {
-      await createStorageObject({
+      const { error: uploadErr } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .upload(path, uploadFile, { contentType, upsert: true });
+      if (uploadErr) throw uploadErr;
+
+      // Refresh metadata row (remove any prior entry for this key, then insert fresh)
+      await supabase
+        .from("storage_objects")
+        .delete()
+        .eq("bucket_id", selectedBucket.id)
+        .eq("key", key);
+      const { error: metaErr } = await createStorageObject({
         bucketId: selectedBucket.id,
-        userId: user!.id,
-        key: uploadKey.trim(),
-        sizeBytes: sizeNum,
-        contentType: uploadType,
+        userId: user.id,
+        key,
+        sizeBytes: uploadFile.size,
+        contentType,
       });
+      if (metaErr) throw metaErr;
+
       await updateStorageBucketStats(selectedBucket.id, {
         objectCount: selectedBucket.object_count + 1,
-        sizeBytes: selectedBucket.size_bytes + sizeNum,
+        sizeBytes: selectedBucket.size_bytes + uploadFile.size,
       });
       toast.success("Object uploaded");
       setShowUpload(false);
       setUploadKey("");
-      setUploadSize("");
+      setUploadFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       fetchObjects(selectedBucket.id);
       fetchBuckets();
-    } catch {
-      toast.error("Failed to upload object");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to upload object";
+      toast.error(message);
+    }
+    setUploading(false);
+  };
+
+  const downloadObject = async (obj: StorageObject) => {
+    if (!user) return;
+    try {
+      const path = objectPath(user.id, obj.bucket_id, obj.key);
+      const { data, error } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .createSignedUrl(path, 60, { download: obj.key.split("/").pop() || obj.key });
+      if (error || !data?.signedUrl) throw error ?? new Error("No signed URL");
+      window.open(data.signedUrl, "_blank", "noopener");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to download";
+      toast.error(message);
     }
   };
 
   const deleteObject = async (obj: StorageObject) => {
+    if (!user) return;
     try {
+      const path = objectPath(user.id, obj.bucket_id, obj.key);
+      const { error: rmErr } = await supabase.storage.from(STORAGE_BUCKET).remove([path]);
+      if (rmErr) throw rmErr;
       await deleteStorageObject(obj.id);
       if (selectedBucket) {
         await updateStorageBucketStats(selectedBucket.id, {
@@ -210,8 +250,9 @@ const Storage = () => {
       toast.success("Object deleted");
       if (selectedBucket) fetchObjects(selectedBucket.id);
       fetchBuckets();
-    } catch {
-      toast.error("Failed to delete object");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to delete object";
+      toast.error(message);
     }
   };
 
