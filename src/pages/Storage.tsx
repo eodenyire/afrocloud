@@ -158,9 +158,16 @@ const Storage = () => {
 
   const deleteBucket = async (bucket: Bucket) => {
     try {
-      if (!organization?.id) throw new Error("Organization context missing");
+      if (!organization?.id || !user) throw new Error("Organization context missing");
+      // Remove all storage files under this bucket's prefix first
+      const prefix = `${user.id}/${bucket.id}`;
+      const { data: files } = await supabase.storage.from(STORAGE_BUCKET).list(prefix, { limit: 1000 });
+      if (files && files.length > 0) {
+        const paths = files.map((f) => `${prefix}/${f.name}`);
+        await supabase.storage.from(STORAGE_BUCKET).remove(paths);
+      }
       await deleteStorageBucket(
-        { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
+        { userId: user.id, orgId: organization.id, projectId: project?.id ?? null },
         bucket.id
       );
       toast.success("Bucket deleted");
