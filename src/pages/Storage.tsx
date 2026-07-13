@@ -91,8 +91,9 @@ const Storage = () => {
   const [fetchingObjects, setFetchingObjects] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [uploadKey, setUploadKey] = useState("");
-  const [uploadSize, setUploadSize] = useState("");
-  const [uploadType, setUploadType] = useState("application/octet-stream");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!loading && !user) navigate("/auth");
