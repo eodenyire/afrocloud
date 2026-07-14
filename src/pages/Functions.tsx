@@ -145,14 +145,12 @@ const Functions = () => {
     load();
   };
 
-  const handleDelete = async () => {
-    if (!deleting) return;
+  const handleDelete = async (target: Fn) => {
     const { error } = await (supabase as never as { from: (t: string) => any })
-      .from("functions").delete().eq("id", deleting.id);
-    if (error) return toast.error(error.message);
+      .from("functions").delete().eq("id", target.id);
+    if (error) { toast.error(error.message); return; }
     toast.success("Function deleted");
-    setDeleting(null);
-    if (editing?.id === deleting.id) setEditing(null);
+    if (editing?.id === target.id) setEditing(null);
     load();
   };
 
