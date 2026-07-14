@@ -59,7 +59,7 @@ const Functions = () => {
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Fn | null>(null);
-  const [deleting, setDeleting] = useState<Fn | null>(null);
+  
   const [invocations, setInvocations] = useState<Invocation[]>([]);
   const [running, setRunning] = useState(false);
   const [invokeInput, setInvokeInput] = useState('{\n  "name": "kenya"\n}');
