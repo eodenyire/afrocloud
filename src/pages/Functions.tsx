@@ -360,7 +360,7 @@ const Functions = () => {
         description="This permanently removes the function and its invocation history."
         confirmLabel="Delete"
         destructive
-        onConfirm={handleDelete}
+        onConfirm={async () => { await handleDelete(); }}
       />
     </ConsoleLayout>
   );
