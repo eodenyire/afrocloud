@@ -360,15 +360,6 @@ const Functions = () => {
         </DialogContent>
       </Dialog>
 
-      <ConfirmDialog
-        open={!!deleting}
-        onOpenChange={(o) => !o && setDeleting(null)}
-        title={`Delete function "${deleting?.name}"?`}
-        description="This permanently removes the function and its invocation history."
-        confirmLabel="Delete"
-        destructive
-        onConfirm={async () => { await handleDelete(); }}
-      />
     </ConsoleLayout>
   );
 };
