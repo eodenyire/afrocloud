@@ -355,6 +355,14 @@ const Networking = () => {
 
               {tab === "dns" && (
                 <>
+                  <div className="mb-4 rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
+                    <span className="text-primary font-medium">Public DNS resolver:</span>{" "}
+                    <code className="text-foreground">
+                      {import.meta.env.VITE_SUPABASE_URL}/functions/v1/dns-resolve?name=&lt;fqdn&gt;&amp;type=A
+                    </code>
+                    <div className="mt-1">Returns DNS-over-HTTPS JSON. Any record created below is immediately resolvable.</div>
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm text-muted-foreground block mb-2">Zone (Domain)</label>
