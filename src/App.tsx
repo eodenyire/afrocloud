@@ -23,6 +23,7 @@ import Settings from "./pages/Settings.tsx";
 import Providers from "./pages/Providers.tsx";
 import Operations from "./pages/Operations.tsx";
 import TerminalRelay from "./pages/TerminalRelay.tsx";
+import Functions from "./pages/Functions.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
