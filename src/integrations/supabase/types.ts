@@ -179,6 +179,95 @@ export type Database = {
         }
         Relationships: []
       }
+      function_invocations: {
+        Row: {
+          duration_ms: number | null
+          error: string | null
+          function_id: string
+          id: string
+          invoked_at: string
+          logs: string | null
+          result: Json | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          duration_ms?: number | null
+          error?: string | null
+          function_id: string
+          id?: string
+          invoked_at?: string
+          logs?: string | null
+          result?: Json | null
+          status: string
+          user_id: string
+        }
+        Update: {
+          duration_ms?: number | null
+          error?: string | null
+          function_id?: string
+          id?: string
+          invoked_at?: string
+          logs?: string | null
+          result?: Json | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "function_invocations_function_id_fkey"
+            columns: ["function_id"]
+            isOneToOne: false
+            referencedRelation: "functions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      functions: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          invocation_count: number
+          last_invoked_at: string | null
+          memory_mb: number
+          name: string
+          runtime: string
+          status: string
+          timeout_ms: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          code?: string
+          created_at?: string
+          id?: string
+          invocation_count?: number
+          last_invoked_at?: string | null
+          memory_mb?: number
+          name: string
+          runtime?: string
+          status?: string
+          timeout_ms?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          invocation_count?: number
+          last_invoked_at?: string | null
+          memory_mb?: number
+          name?: string
+          runtime?: string
+          status?: string
+          timeout_ms?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       load_balancers: {
         Row: {
           created_at: string | null
@@ -510,6 +599,47 @@ export type Database = {
           vcpus?: number
         }
         Relationships: []
+      }
+      vm_snapshots: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          size_gb: number
+          status: string
+          updated_at: string
+          user_id: string
+          vm_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          size_gb?: number
+          status?: string
+          updated_at?: string
+          user_id: string
+          vm_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          size_gb?: number
+          status?: string
+          updated_at?: string
+          user_id?: string
+          vm_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vm_snapshots_vm_id_fkey"
+            columns: ["vm_id"]
+            isOneToOne: false
+            referencedRelation: "virtual_machines"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       vpcs: {
         Row: {
