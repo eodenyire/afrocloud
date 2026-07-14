@@ -12,6 +12,7 @@ import { useState } from "react";
 const NAV_ITEMS = [
   { icon: Activity, label: "Overview", href: "/console" },
   { icon: Server, label: "Compute", href: "/console/compute" },
+  { icon: FunctionSquare, label: "Functions", href: "/console/functions" },
   { icon: Database, label: "Databases", href: "/console/databases" },
   { icon: HardDrive, label: "Storage", href: "/console/storage" },
   { icon: Globe, label: "Edge Nodes", href: "/console/edge-nodes" },
