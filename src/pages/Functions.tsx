@@ -225,9 +225,18 @@ const Functions = () => {
                   </CardTitle>
                   <div className="flex items-center gap-2">
                     <Button size="sm" variant="outline" onClick={handleSaveEdit}>Save</Button>
-                    <Button size="sm" variant="destructive" onClick={() => setDeleting(editing)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    <ConfirmDialog
+                      trigger={
+                        <Button size="sm" variant="destructive">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      }
+                      title={`Delete function "${editing.name}"?`}
+                      description="This permanently removes the function and its invocation history."
+                      confirmLabel="Delete"
+                      onConfirm={async () => { await handleDelete(editing); }}
+                    />
+
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
