@@ -4,7 +4,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import {
   Cloud, Server, Database, HardDrive, Globe, Shield,
   BarChart3, LogOut, Network, FileCode, Receipt, KeyRound,
-  BookOpenCheck, Settings, Activity, ChevronLeft, Menu, X, Plug, ListChecks, Terminal,
+  BookOpenCheck, Settings, Activity, ChevronLeft, Menu, X, Plug, ListChecks, Terminal, FunctionSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
