@@ -455,8 +455,13 @@ const Networking = () => {
                     </div>
                     <div>
                       <label className="text-sm text-muted-foreground block mb-2">Value</label>
-                      <input value={dnsValue} onChange={(e) => setDnsValue(e.target.value)} placeholder="10.0.1.1"
-                        className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+                      <input
+                        value={dnsValue}
+                        onChange={(e) => { setDnsValue(e.target.value); setDnsError(validateDns(dnsType, e.target.value)); }}
+                        placeholder={dnsType === "A" ? "10.0.1.1" : dnsType === "AAAA" ? "2001:db8::1" : dnsType === "MX" ? "10 mail.example.com" : "hostname or text"}
+                        className={`w-full rounded-lg border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring ${dnsError ? "border-destructive" : "border-border"}`}
+                      />
+                      {dnsError && <p className="text-xs text-destructive mt-1">{dnsError}</p>}
                     </div>
                   </div>
                   <div>
