@@ -8,7 +8,13 @@ import { toast } from "sonner";
 import {
   Cloud, Server, Plus, Power, PowerOff, Trash2,
   Cpu, HardDrive, MemoryStick, Globe, Monitor, RefreshCw, Terminal,
+  RotateCw, Camera, Copy as CopyIcon, Undo2,
 } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ConsoleLayout } from "@/components/ConsoleLayout";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ConnectDialog, type ConnectTarget } from "@/components/ConnectDialog";
