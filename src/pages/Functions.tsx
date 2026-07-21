@@ -337,8 +337,27 @@ const Functions = () => {
               </Card>
 
               <Card>
-                <CardHeader>
+                <CardHeader className="flex-row items-center justify-between space-y-0 gap-2 flex-wrap">
                   <CardTitle className="text-sm">Recent invocations</CardTitle>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1">
+                      <Label className="text-[10px] text-muted-foreground">Retention (days)</Label>
+                      <Input type="number" value={retentionDays} onChange={(e) => setRetentionDays(Number(e.target.value))}
+                        className="h-7 w-16 text-xs" min={0} />
+                    </div>
+                    <Button size="sm" variant="outline" onClick={handlePurge} className="h-7">
+                      <Eraser className="h-3 w-3 mr-1" /> Purge
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => handleExport("csv")} className="h-7">
+                      <Download className="h-3 w-3 mr-1" /> CSV
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => handleExport("json")} className="h-7">
+                      <Download className="h-3 w-3 mr-1" /> JSON
+                    </Button>
+                    <Input type="number" value={invLimit}
+                      onChange={(e) => { const n = Number(e.target.value); setInvLimit(n); if (editing) loadInvocations(editing.id, n); }}
+                      className="h-7 w-16 text-xs" min={1} max={1000} title="Rows to show" />
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {invocations.length === 0 && (
