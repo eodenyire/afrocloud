@@ -73,6 +73,8 @@ const Functions = () => {
   const [running, setRunning] = useState(false);
   const [invokeInput, setInvokeInput] = useState('{\n  "name": "kenya"\n}');
   const [lastResult, setLastResult] = useState<unknown>(null);
+  const [retentionDays, setRetentionDays] = useState(30);
+  const [invLimit, setInvLimit] = useState(100);
 
   const [form, setForm] = useState({ name: "", code: STARTER, timeout_ms: 5000, memory_mb: 128 });
 
