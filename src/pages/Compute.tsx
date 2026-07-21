@@ -106,6 +106,13 @@ const Compute = () => {
   // Connect dialog
   const [connectTarget, setConnectTarget] = useState<ConnectTarget | null>(null);
 
+  // Snapshots dialog
+  type Snap = { id: string; vm_id: string; name: string; size_gb: number; status: string; created_at: string };
+  const [snapVm, setSnapVm] = useState<VM | null>(null);
+  const [snaps, setSnaps] = useState<Snap[]>([]);
+  const [snapName, setSnapName] = useState("");
+  const [snapBusy, setSnapBusy] = useState(false);
+
   useEffect(() => {
     if (!loading && !user) navigate("/auth");
   }, [user, loading, navigate]);
