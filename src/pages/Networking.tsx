@@ -264,10 +264,11 @@ const Networking = () => {
       toast.error("Failed to delete");
     }
   };
-  const deleteDns = async (id: string) => {
+  const deleteDns = async (rec: DNS) => {
     try {
       if (!organization?.id) throw new Error("Organization context missing");
-      await removeDnsRecord({ userId: user!.id, orgId: organization.id, projectId: project?.id ?? null }, id);
+      await removeDnsRecord({ userId: user!.id, orgId: organization.id, projectId: project?.id ?? null }, rec.id);
+      pushHistory("delete", rec, `value=${rec.value}`);
       toast.success("DNS record deleted");
       fetchAll();
     } catch {
