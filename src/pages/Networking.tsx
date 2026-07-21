@@ -619,9 +619,12 @@ const Networking = () => {
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
                           <span className={`text-xs px-2.5 py-1 rounded-full font-medium capitalize ${STATUS_COLORS[rec.status] || "text-muted-foreground bg-muted"}`}>{rec.status}</span>
-                          <Button variant="ghost" size="icon" onClick={() => deleteDns(rec.id)}>
+                          <Button variant="ghost" size="icon" title="Edit" onClick={() => setEditingDns({ ...rec })}>
+                            <Pencil className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => deleteDns(rec)}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </div>
