@@ -93,15 +93,51 @@ const Functions = () => {
 
   useEffect(() => { load(); }, [user]);
 
-  const loadInvocations = async (fnId: string) => {
+  const loadInvocations = async (fnId: string, limit = invLimit) => {
     const { data } = await (supabase as never as { from: (t: string) => any })
       .from("function_invocations")
       .select("*")
       .eq("function_id", fnId)
       .order("invoked_at", { ascending: false })
-      .limit(20);
+      .limit(limit);
     setInvocations((data ?? []) as Invocation[]);
   };
+
+  const handleExport = (fmt: "csv" | "json") => {
+    if (!editing || invocations.length === 0) { toast.error("No invocations to export"); return; }
+    const filename = `${editing.name}-invocations.${fmt}`;
+    let blob: Blob;
+    if (fmt === "json") {
+      blob = new Blob([JSON.stringify(invocations, null, 2)], { type: "application/json" });
+    } else {
+      const esc = (s: unknown) => {
+        const v = s == null ? "" : typeof s === "string" ? s : JSON.stringify(s);
+        return `"${v.replace(/"/g, '""')}"`;
+      };
+      const header = ["id", "status", "duration_ms", "invoked_at", "error", "logs", "result"].join(",");
+      const rows = invocations.map((i) =>
+        [i.id, i.status, i.duration_ms ?? "", i.invoked_at, i.error ?? "", i.logs ?? "", i.result].map(esc).join(",")
+      );
+      blob = new Blob([header + "\n" + rows.join("\n")], { type: "text/csv" });
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${invocations.length} invocations`);
+  };
+
+  const handlePurge = async () => {
+    if (!editing) return;
+    if (!confirm(`Delete invocations older than ${retentionDays} days?`)) return;
+    const { data, error } = await supabase.functions.invoke("fn-invoke", {
+      body: { action: "purge", function_id: editing.id, retention_days: retentionDays },
+    });
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Purged ${(data as { purged?: number })?.purged ?? 0} invocations`);
+    loadInvocations(editing.id);
+  };
+
 
   const handleCreate = async () => {
     if (!user) return;
