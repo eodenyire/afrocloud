@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import {
   FunctionSquare, Plus, Play, Trash2, Copy, Code2, Clock, Activity, RefreshCw,
+  Download, Eraser,
 } from "lucide-react";
 
 type Fn = {
@@ -40,14 +41,22 @@ type Invocation = {
   invoked_at: string;
 };
 
-const STARTER = `// Africa Cloud function. The default export receives the request input
-// and can return any JSON-serializable value.
-export default async (input) => {
-  console.log("invoked with", input);
+const STARTER = `// Africa Cloud function.
+// When called via the authenticated Console, "req" is your input JSON.
+// When called via the public URL, "req" is an HTTP request:
+//   { method, path, query, headers, body, url }
+// Return any JSON value, OR an HTTP response: { status, headers, body }.
+export default async (req) => {
+  console.log("invoked with", req);
+  // HTTP-style response example:
   return {
-    message: "hello from africa cloud",
-    at: new Date().toISOString(),
-    echo: input,
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+    body: {
+      message: "hello from africa cloud",
+      at: new Date().toISOString(),
+      echo: req,
+    },
   };
 };`;
 
@@ -64,6 +73,8 @@ const Functions = () => {
   const [running, setRunning] = useState(false);
   const [invokeInput, setInvokeInput] = useState('{\n  "name": "kenya"\n}');
   const [lastResult, setLastResult] = useState<unknown>(null);
+  const [retentionDays, setRetentionDays] = useState(30);
+  const [invLimit, setInvLimit] = useState(100);
 
   const [form, setForm] = useState({ name: "", code: STARTER, timeout_ms: 5000, memory_mb: 128 });
 
@@ -82,15 +93,51 @@ const Functions = () => {
 
   useEffect(() => { load(); }, [user]);
 
-  const loadInvocations = async (fnId: string) => {
+  const loadInvocations = async (fnId: string, limit = invLimit) => {
     const { data } = await (supabase as never as { from: (t: string) => any })
       .from("function_invocations")
       .select("*")
       .eq("function_id", fnId)
       .order("invoked_at", { ascending: false })
-      .limit(20);
+      .limit(limit);
     setInvocations((data ?? []) as Invocation[]);
   };
+
+  const handleExport = (fmt: "csv" | "json") => {
+    if (!editing || invocations.length === 0) { toast.error("No invocations to export"); return; }
+    const filename = `${editing.name}-invocations.${fmt}`;
+    let blob: Blob;
+    if (fmt === "json") {
+      blob = new Blob([JSON.stringify(invocations, null, 2)], { type: "application/json" });
+    } else {
+      const esc = (s: unknown) => {
+        const v = s == null ? "" : typeof s === "string" ? s : JSON.stringify(s);
+        return `"${v.replace(/"/g, '""')}"`;
+      };
+      const header = ["id", "status", "duration_ms", "invoked_at", "error", "logs", "result"].join(",");
+      const rows = invocations.map((i) =>
+        [i.id, i.status, i.duration_ms ?? "", i.invoked_at, i.error ?? "", i.logs ?? "", i.result].map(esc).join(",")
+      );
+      blob = new Blob([header + "\n" + rows.join("\n")], { type: "text/csv" });
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${invocations.length} invocations`);
+  };
+
+  const handlePurge = async () => {
+    if (!editing) return;
+    if (!confirm(`Delete invocations older than ${retentionDays} days?`)) return;
+    const { data, error } = await supabase.functions.invoke("fn-invoke", {
+      body: { action: "purge", function_id: editing.id, retention_days: retentionDays },
+    });
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Purged ${(data as { purged?: number })?.purged ?? 0} invocations`);
+    loadInvocations(editing.id);
+  };
+
 
   const handleCreate = async () => {
     if (!user) return;
@@ -290,8 +337,27 @@ const Functions = () => {
               </Card>
 
               <Card>
-                <CardHeader>
+                <CardHeader className="flex-row items-center justify-between space-y-0 gap-2 flex-wrap">
                   <CardTitle className="text-sm">Recent invocations</CardTitle>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1">
+                      <Label className="text-[10px] text-muted-foreground">Retention (days)</Label>
+                      <Input type="number" value={retentionDays} onChange={(e) => setRetentionDays(Number(e.target.value))}
+                        className="h-7 w-16 text-xs" min={0} />
+                    </div>
+                    <Button size="sm" variant="outline" onClick={handlePurge} className="h-7">
+                      <Eraser className="h-3 w-3 mr-1" /> Purge
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => handleExport("csv")} className="h-7">
+                      <Download className="h-3 w-3 mr-1" /> CSV
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => handleExport("json")} className="h-7">
+                      <Download className="h-3 w-3 mr-1" /> JSON
+                    </Button>
+                    <Input type="number" value={invLimit}
+                      onChange={(e) => { const n = Number(e.target.value); setInvLimit(n); if (editing) loadInvocations(editing.id, n); }}
+                      className="h-7 w-16 text-xs" min={1} max={1000} title="Rows to show" />
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {invocations.length === 0 && (

@@ -6,10 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import {
   Cloud, Network, Plus, Trash2, RefreshCw,
-  Globe, Shield, Wifi, Server, Copy, Radio,
+  Globe, Shield, Wifi, Server, Copy, Radio, Pencil, History,
 } from "lucide-react";
 import { ConsoleLayout } from "@/components/ConsoleLayout";
+import { supabase } from "@/integrations/supabase/client";
 import {
   createDnsRecord,
   createLoadBalancer,
@@ -51,6 +57,27 @@ type VPC = { id: string; name: string; region: string; cidr_block: string; statu
 type LB = { id: string; name: string; region: string; lb_type: string; protocol: string; port: number; target_count: number; status: string; dns_name: string | null; created_at: string | null };
 type DNS = { id: string; zone: string; record_type: string; name: string; value: string; ttl: number; status: string; created_at: string | null };
 
+
+// ---- DNS record validation ----
+const IPV4 = /^(25[0-5]|2[0-4]\d|[01]?\d?\d)(\.(25[0-5]|2[0-4]\d|[01]?\d?\d)){3}$/;
+const IPV6 = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|::)/;
+const HOSTNAME = /^([a-zA-Z0-9_](?:[a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])?)(\.[a-zA-Z0-9_](?:[a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])?)*\.?$/;
+const validateDns = (type: string, value: string): string | null => {
+  const v = value.trim();
+  if (!v) return "Value required";
+  switch (type) {
+    case "A": return IPV4.test(v) ? null : "Must be a valid IPv4 address (e.g. 10.0.1.1)";
+    case "AAAA": return IPV6.test(v) ? null : "Must be a valid IPv6 address";
+    case "CNAME":
+    case "NS": return HOSTNAME.test(v) ? null : "Must be a valid hostname";
+    case "MX": return /^\d+\s+\S+$/.test(v) ? null : "Format: <priority> <hostname>  (e.g. 10 mail.example.com)";
+    case "TXT": return v.length <= 512 ? null : "TXT value too long (>512)";
+    default: return null;
+  }
+};
+
+type DnsHistoryEntry = { id: string; ts: string; action: string; record: string; details: string };
+
 const Networking = () => {
   const { user, loading } = useAuth();
   const { organization, project, loading: workspaceLoading } = useWorkspace();
@@ -82,6 +109,23 @@ const Networking = () => {
   const [dnsName, setDnsName] = useState("");
   const [dnsValue, setDnsValue] = useState("");
   const [dnsTtl, setDnsTtl] = useState(300);
+  const [dnsError, setDnsError] = useState<string | null>(null);
+  const [editingDns, setEditingDns] = useState<DNS | null>(null);
+  const [dnsHistory, setDnsHistory] = useState<DnsHistoryEntry[]>(() => {
+    try { return JSON.parse(localStorage.getItem("ac_dns_history") ?? "[]"); } catch { return []; }
+  });
+  const [showHistory, setShowHistory] = useState(false);
+  const pushHistory = (action: string, rec: { record_type: string; name: string; zone: string }, details: string) => {
+    const entry: DnsHistoryEntry = {
+      id: crypto.randomUUID(), ts: new Date().toISOString(), action,
+      record: `${rec.record_type} ${rec.name}.${rec.zone}`, details,
+    };
+    setDnsHistory((h) => {
+      const next = [entry, ...h].slice(0, 200);
+      localStorage.setItem("ac_dns_history", JSON.stringify(next));
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (!loading && !user) navigate("/auth");
@@ -156,20 +200,25 @@ const Networking = () => {
 
   const handleCreateDns = async () => {
     if (!dnsZone.trim() || !dnsName.trim() || !dnsValue.trim()) { toast.error("All fields required"); return; }
+    const err = validateDns(dnsType, dnsValue);
+    if (err) { setDnsError(err); toast.error(err); return; }
+    setDnsError(null);
     if (!organization?.id) { toast.error("Organization context missing"); return; }
     setCreating(true);
     try {
+      const rec = {
+        zone: dnsZone.trim(),
+        record_type: dnsType,
+        name: dnsName.trim(),
+        value: dnsValue.trim(),
+        ttl: dnsTtl,
+        status: "active",
+      };
       await createDnsRecord(
         { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
-        {
-          zone: dnsZone.trim(),
-          record_type: dnsType,
-          name: dnsName.trim(),
-          value: dnsValue.trim(),
-          ttl: dnsTtl,
-          status: "active",
-        }
+        rec
       );
+      pushHistory("create", rec, `value=${rec.value} ttl=${rec.ttl}`);
       toast.success("DNS record created");
       resetForms();
       fetchAll();
@@ -178,6 +227,27 @@ const Networking = () => {
     }
     setCreating(false);
   };
+
+  const handleUpdateDns = async () => {
+    if (!editingDns) return;
+    const err = validateDns(editingDns.record_type, editingDns.value);
+    if (err) { toast.error(err); return; }
+    const { error } = await supabase
+      .from("dns_records")
+      .update({
+        value: editingDns.value.trim(),
+        ttl: editingDns.ttl,
+        record_type: editingDns.record_type,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq("id", editingDns.id);
+    if (error) { toast.error(error.message); return; }
+    pushHistory("update", editingDns, `value=${editingDns.value} ttl=${editingDns.ttl}`);
+    toast.success("DNS record updated");
+    setEditingDns(null);
+    fetchAll();
+  };
+
 
   const deleteVpc = async (id: string) => {
     try {
@@ -199,10 +269,11 @@ const Networking = () => {
       toast.error("Failed to delete");
     }
   };
-  const deleteDns = async (id: string) => {
+  const deleteDns = async (rec: DNS) => {
     try {
       if (!organization?.id) throw new Error("Organization context missing");
-      await removeDnsRecord({ userId: user!.id, orgId: organization.id, projectId: project?.id ?? null }, id);
+      await removeDnsRecord({ userId: user!.id, orgId: organization.id, projectId: project?.id ?? null }, rec.id);
+      pushHistory("delete", rec, `value=${rec.value}`);
       toast.success("DNS record deleted");
       fetchAll();
     } catch {
@@ -389,8 +460,13 @@ const Networking = () => {
                     </div>
                     <div>
                       <label className="text-sm text-muted-foreground block mb-2">Value</label>
-                      <input value={dnsValue} onChange={(e) => setDnsValue(e.target.value)} placeholder="10.0.1.1"
-                        className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+                      <input
+                        value={dnsValue}
+                        onChange={(e) => { setDnsValue(e.target.value); setDnsError(validateDns(dnsType, e.target.value)); }}
+                        placeholder={dnsType === "A" ? "10.0.1.1" : dnsType === "AAAA" ? "2001:db8::1" : dnsType === "MX" ? "10 mail.example.com" : "hostname or text"}
+                        className={`w-full rounded-lg border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring ${dnsError ? "border-destructive" : "border-border"}`}
+                      />
+                      {dnsError && <p className="text-xs text-destructive mt-1">{dnsError}</p>}
                     </div>
                   </div>
                   <div>
@@ -416,9 +492,16 @@ const Networking = () => {
             <h2 className="text-lg font-heading font-semibold text-foreground">
               {tab === "vpcs" ? "Virtual Private Clouds" : tab === "load-balancers" ? "Load Balancers" : "DNS Records"}
             </h2>
-            <Button variant="ghost" size="sm" onClick={fetchAll}>
-              <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
-            </Button>
+            <div className="flex items-center gap-2">
+              {tab === "dns" && (
+                <Button variant="outline" size="sm" onClick={() => setShowHistory(true)} className="gap-1.5">
+                  <History className="h-3.5 w-3.5" /> History ({dnsHistory.length})
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" onClick={fetchAll}>
+                <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
+              </Button>
+            </div>
           </div>
 
           {/* VPCs */}
@@ -553,9 +636,12 @@ const Networking = () => {
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
                           <span className={`text-xs px-2.5 py-1 rounded-full font-medium capitalize ${STATUS_COLORS[rec.status] || "text-muted-foreground bg-muted"}`}>{rec.status}</span>
-                          <Button variant="ghost" size="icon" onClick={() => deleteDns(rec.id)}>
+                          <Button variant="ghost" size="icon" title="Edit" onClick={() => setEditingDns({ ...rec })}>
+                            <Pencil className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => deleteDns(rec)}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </div>
@@ -568,6 +654,78 @@ const Networking = () => {
           )}
         </div>
       </div>
+
+      {/* Edit DNS record dialog */}
+      <Dialog open={!!editingDns} onOpenChange={(v) => !v && setEditingDns(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit DNS record</DialogTitle>
+            <DialogDescription>
+              {editingDns && <>Modify <code>{editingDns.record_type} {editingDns.name}.{editingDns.zone}</code></>}
+            </DialogDescription>
+          </DialogHeader>
+          {editingDns && (
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs">Type</Label>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {RECORD_TYPES.map((rt) => (
+                    <button key={rt}
+                      onClick={() => setEditingDns({ ...editingDns, record_type: rt })}
+                      className={`rounded-md border px-2.5 py-1 text-xs font-mono ${editingDns.record_type === rt ? "border-primary bg-primary/10" : "border-border"}`}>
+                      {rt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">Value</Label>
+                <Input value={editingDns.value} onChange={(e) => setEditingDns({ ...editingDns, value: e.target.value })} />
+              </div>
+              <div>
+                <Label className="text-xs">TTL (s)</Label>
+                <Input type="number" value={editingDns.ttl}
+                  onChange={(e) => setEditingDns({ ...editingDns, ttl: Number(e.target.value) })} className="w-32" />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditingDns(null)}>Cancel</Button>
+            <Button onClick={handleUpdateDns}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* DNS history dialog */}
+      <Dialog open={showHistory} onOpenChange={setShowHistory}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>DNS record history</DialogTitle>
+            <DialogDescription>
+              Local audit trail of create/update/delete actions on your DNS records.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-96 overflow-auto space-y-1">
+            {dnsHistory.length === 0 && <p className="text-xs text-muted-foreground">No changes yet.</p>}
+            {dnsHistory.map((h) => (
+              <div key={h.id} className="text-xs border border-border rounded-md p-2 flex items-start gap-3">
+                <span className={`px-1.5 py-0.5 rounded uppercase font-mono ${h.action === "delete" ? "bg-destructive/10 text-destructive" : h.action === "update" ? "bg-primary/10 text-primary" : "bg-green-400/10 text-green-400"}`}>
+                  {h.action}
+                </span>
+                <div className="flex-1">
+                  <div className="font-mono">{h.record}</div>
+                  <div className="text-muted-foreground">{h.details}</div>
+                </div>
+                <span className="text-muted-foreground shrink-0">{new Date(h.ts).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => { setDnsHistory([]); localStorage.removeItem("ac_dns_history"); }}>Clear</Button>
+            <Button onClick={() => setShowHistory(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ConsoleLayout>
   );
 };

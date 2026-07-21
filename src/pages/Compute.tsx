@@ -8,7 +8,13 @@ import { toast } from "sonner";
 import {
   Cloud, Server, Plus, Power, PowerOff, Trash2,
   Cpu, HardDrive, MemoryStick, Globe, Monitor, RefreshCw, Terminal,
+  RotateCw, Camera, Copy as CopyIcon, Undo2,
 } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ConsoleLayout } from "@/components/ConsoleLayout";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ConnectDialog, type ConnectTarget } from "@/components/ConnectDialog";
@@ -99,6 +105,13 @@ const Compute = () => {
 
   // Connect dialog
   const [connectTarget, setConnectTarget] = useState<ConnectTarget | null>(null);
+
+  // Snapshots dialog
+  type Snap = { id: string; vm_id: string; name: string; size_gb: number; status: string; created_at: string };
+  const [snapVm, setSnapVm] = useState<VM | null>(null);
+  const [snaps, setSnaps] = useState<Snap[]>([]);
+  const [snapName, setSnapName] = useState("");
+  const [snapBusy, setSnapBusy] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) navigate("/auth");
@@ -207,6 +220,106 @@ const Compute = () => {
     else toast.success(`Instance ${action}ed`);
     fetchVMs();
   };
+
+  const rebootVM = async (vm: VM) => {
+    await supabase.from("virtual_machines").update({ status: "rebooting" } as never).eq("id", vm.id);
+    fetchVMs();
+    const result = await provision({
+      action: "reboot",
+      resource_type: "compute",
+      provider: vm.provider as Provider,
+      resource_id: vm.id,
+      payload: { provider_resource_id: vm.provider_resource_id ?? "" },
+    });
+    await supabase
+      .from("virtual_machines")
+      .update({ status: result.ok ? "running" : vm.status } as never)
+      .eq("id", vm.id);
+    if (!result.ok) toast.error(result.message ?? "Reboot failed");
+    else toast.success(`Instance rebooted`);
+    fetchVMs();
+  };
+
+  // ---------- Snapshots ----------
+  const openSnapshots = async (vm: VM) => {
+    setSnapVm(vm);
+    setSnapName(`${vm.name}-snap-${new Date().toISOString().slice(0, 10)}`);
+    const { data } = await (supabase as never as { from: (t: string) => any })
+      .from("vm_snapshots").select("*").eq("vm_id", vm.id).order("created_at", { ascending: false });
+    setSnaps((data ?? []) as Snap[]);
+  };
+
+  const refreshSnaps = async (vmId: string) => {
+    const { data } = await (supabase as never as { from: (t: string) => any })
+      .from("vm_snapshots").select("*").eq("vm_id", vmId).order("created_at", { ascending: false });
+    setSnaps((data ?? []) as Snap[]);
+  };
+
+  const createSnapshot = async () => {
+    if (!snapVm || !user) return;
+    if (!snapName.trim()) { toast.error("Snapshot name required"); return; }
+    setSnapBusy(true);
+    const { error } = await (supabase as never as { from: (t: string) => any })
+      .from("vm_snapshots").insert({
+        user_id: user.id, vm_id: snapVm.id, name: snapName.trim(),
+        size_gb: snapVm.disk_gb, status: "ready",
+      });
+    setSnapBusy(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Snapshot created");
+    setSnapName(`${snapVm.name}-snap-${Date.now()}`);
+    refreshSnaps(snapVm.id);
+  };
+
+  const restoreSnapshot = async (snap: Snap) => {
+    if (!snapVm) return;
+    if (!confirm(`Restore ${snapVm.name} from snapshot "${snap.name}"? The VM will be rebooted.`)) return;
+    setSnapBusy(true);
+    await supabase.from("virtual_machines")
+      .update({ status: "restoring", updated_at: new Date().toISOString() } as never)
+      .eq("id", snapVm.id);
+    // Simulate restore then reboot to bring back online
+    await new Promise((r) => setTimeout(r, 800));
+    await supabase.from("virtual_machines")
+      .update({ status: "running", updated_at: new Date().toISOString() } as never)
+      .eq("id", snapVm.id);
+    setSnapBusy(false);
+    toast.success(`Restored from "${snap.name}"`);
+    fetchVMs();
+  };
+
+  const cloneSnapshot = async (snap: Snap) => {
+    if (!snapVm || !user) return;
+    setSnapBusy(true);
+    const cloneName = `${snapVm.name}-clone-${Math.random().toString(36).slice(2, 6)}`;
+    const { error } = await supabase.from("virtual_machines").insert({
+      user_id: user.id,
+      name: cloneName,
+      region: snapVm.region,
+      machine_type: snapVm.machine_type,
+      vcpus: snapVm.vcpus,
+      ram_gb: snapVm.ram_gb,
+      disk_gb: snapVm.disk_gb,
+      os_image: snapVm.os_image,
+      status: "provisioning",
+      ip_address: null,
+      provider: snapVm.provider,
+    } as never);
+    setSnapBusy(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Cloned as ${cloneName}`);
+    fetchVMs();
+  };
+
+  const deleteSnapshot = async (snap: Snap) => {
+    if (!confirm(`Delete snapshot "${snap.name}"?`)) return;
+    const { error } = await (supabase as never as { from: (t: string) => any })
+      .from("vm_snapshots").delete().eq("id", snap.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Snapshot deleted");
+    if (snapVm) refreshSnaps(snapVm.id);
+  };
+
 
   const deleteVM = async (vm: VM) => {
     if (!confirm(`Terminate ${vm.name}? This cannot be undone.`)) return;
@@ -445,6 +558,23 @@ const Compute = () => {
                         <Button
                           variant="ghost"
                           size="icon"
+                          title="Reboot"
+                          onClick={() => rebootVM(vm)}
+                          disabled={vm.status !== "running"}
+                        >
+                          <RotateCw className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Snapshots"
+                          onClick={() => openSnapshots(vm)}
+                        >
+                          <Camera className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={() => toggleVM(vm)}
                           disabled={vm.status === "provisioning" || vm.status === "terminating"}
                         >
@@ -479,6 +609,56 @@ const Compute = () => {
         onOpenChange={(v) => !v && setConnectTarget(null)}
         target={connectTarget}
       />
+
+      {/* Snapshots dialog */}
+      <Dialog open={!!snapVm} onOpenChange={(v) => { if (!v) { setSnapVm(null); setSnaps([]); } }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Snapshots — {snapVm?.name}</DialogTitle>
+            <DialogDescription>
+              Create point-in-time snapshots, restore the VM, or clone into a new instance.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Label className="text-xs">New snapshot name</Label>
+                <Input value={snapName} onChange={(e) => setSnapName(e.target.value)} />
+              </div>
+              <Button onClick={createSnapshot} disabled={snapBusy}>
+                <Camera className="h-4 w-4 mr-1" /> Snapshot
+              </Button>
+            </div>
+            <div className="max-h-72 overflow-auto space-y-2">
+              {snaps.length === 0 && <p className="text-xs text-muted-foreground">No snapshots yet.</p>}
+              {snaps.map((s) => (
+                <div key={s.id} className="border border-border rounded-md p-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">{s.name}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {s.size_gb} GB · {s.status} · {new Date(s.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button size="sm" variant="outline" onClick={() => restoreSnapshot(s)} disabled={snapBusy}>
+                      <Undo2 className="h-3.5 w-3.5 mr-1" /> Restore
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => cloneSnapshot(s)} disabled={snapBusy}>
+                      <CopyIcon className="h-3.5 w-3.5 mr-1" /> Clone
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => deleteSnapshot(s)} disabled={snapBusy}>
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSnapVm(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ConsoleLayout>
   );
 };
