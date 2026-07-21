@@ -104,6 +104,23 @@ const Networking = () => {
   const [dnsName, setDnsName] = useState("");
   const [dnsValue, setDnsValue] = useState("");
   const [dnsTtl, setDnsTtl] = useState(300);
+  const [dnsError, setDnsError] = useState<string | null>(null);
+  const [editingDns, setEditingDns] = useState<DNS | null>(null);
+  const [dnsHistory, setDnsHistory] = useState<DnsHistoryEntry[]>(() => {
+    try { return JSON.parse(localStorage.getItem("ac_dns_history") ?? "[]"); } catch { return []; }
+  });
+  const [showHistory, setShowHistory] = useState(false);
+  const pushHistory = (action: string, rec: { record_type: string; name: string; zone: string }, details: string) => {
+    const entry: DnsHistoryEntry = {
+      id: crypto.randomUUID(), ts: new Date().toISOString(), action,
+      record: `${rec.record_type} ${rec.name}.${rec.zone}`, details,
+    };
+    setDnsHistory((h) => {
+      const next = [entry, ...h].slice(0, 200);
+      localStorage.setItem("ac_dns_history", JSON.stringify(next));
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (!loading && !user) navigate("/auth");
