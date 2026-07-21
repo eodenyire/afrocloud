@@ -654,6 +654,78 @@ const Networking = () => {
           )}
         </div>
       </div>
+
+      {/* Edit DNS record dialog */}
+      <Dialog open={!!editingDns} onOpenChange={(v) => !v && setEditingDns(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit DNS record</DialogTitle>
+            <DialogDescription>
+              {editingDns && <>Modify <code>{editingDns.record_type} {editingDns.name}.{editingDns.zone}</code></>}
+            </DialogDescription>
+          </DialogHeader>
+          {editingDns && (
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs">Type</Label>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {RECORD_TYPES.map((rt) => (
+                    <button key={rt}
+                      onClick={() => setEditingDns({ ...editingDns, record_type: rt })}
+                      className={`rounded-md border px-2.5 py-1 text-xs font-mono ${editingDns.record_type === rt ? "border-primary bg-primary/10" : "border-border"}`}>
+                      {rt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">Value</Label>
+                <Input value={editingDns.value} onChange={(e) => setEditingDns({ ...editingDns, value: e.target.value })} />
+              </div>
+              <div>
+                <Label className="text-xs">TTL (s)</Label>
+                <Input type="number" value={editingDns.ttl}
+                  onChange={(e) => setEditingDns({ ...editingDns, ttl: Number(e.target.value) })} className="w-32" />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditingDns(null)}>Cancel</Button>
+            <Button onClick={handleUpdateDns}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* DNS history dialog */}
+      <Dialog open={showHistory} onOpenChange={setShowHistory}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>DNS record history</DialogTitle>
+            <DialogDescription>
+              Local audit trail of create/update/delete actions on your DNS records.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-96 overflow-auto space-y-1">
+            {dnsHistory.length === 0 && <p className="text-xs text-muted-foreground">No changes yet.</p>}
+            {dnsHistory.map((h) => (
+              <div key={h.id} className="text-xs border border-border rounded-md p-2 flex items-start gap-3">
+                <span className={`px-1.5 py-0.5 rounded uppercase font-mono ${h.action === "delete" ? "bg-destructive/10 text-destructive" : h.action === "update" ? "bg-primary/10 text-primary" : "bg-green-400/10 text-green-400"}`}>
+                  {h.action}
+                </span>
+                <div className="flex-1">
+                  <div className="font-mono">{h.record}</div>
+                  <div className="text-muted-foreground">{h.details}</div>
+                </div>
+                <span className="text-muted-foreground shrink-0">{new Date(h.ts).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => { setDnsHistory([]); localStorage.removeItem("ac_dns_history"); }}>Clear</Button>
+            <Button onClick={() => setShowHistory(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ConsoleLayout>
   );
 };
