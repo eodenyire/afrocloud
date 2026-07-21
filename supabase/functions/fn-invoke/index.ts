@@ -1,20 +1,22 @@
 // Africa Cloud — native Functions-as-a-Service runtime.
 // Executes user-authored JavaScript inside the edge runtime with a hard
-// timeout and captures logs. The code is imported as an ES module via a
-// data: URL, so it runs in Deno's own isolate rather than a naive eval().
+// timeout and captures logs.
 //
 // Two request modes:
-//   1. { action: "invoke", function_id, input }
-//        -> requires JWT, must own the function, logs an invocation row.
-//   2. Public HTTP invoke via GET/POST /functions/v1/fn-invoke?id=<function_id>
-//        -> anonymous, still logged (owner recorded from the function row).
+//   1. { action: "invoke", function_id, input }  — authenticated JSON call
+//   2. Public HTTP invoke via ANY method /functions/v1/fn-invoke?id=<id>[/path...]
+//      The handler receives a rich request object:
+//        { method, path, query, headers, body, url }
+//      and can return either:
+//        - any JSON value → serialized as 200 application/json
+//        - { status?, headers?, body? } → returned as an HTTP response
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
 };
 
 const json = (status: number, body: unknown) =>
@@ -100,6 +102,10 @@ async function executeFunction(row: FnRow, input: unknown, admin: ReturnType<typ
   return { status, duration_ms: durationMs, logs, result, error };
 }
 
+function isHttpResponse(v: unknown): v is { status?: number; headers?: Record<string, string>; body?: unknown } {
+  return !!v && typeof v === "object" && ("status" in (v as object) || "headers" in (v as object) || "body" in (v as object));
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -111,22 +117,65 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const publicId = url.searchParams.get("id");
 
-    // Public HTTP invocation path
+    // Public HTTP invocation path — pass a rich request object to the handler.
     if (publicId) {
-      let input: unknown = null;
-      if (req.method !== "GET") {
-        try { input = await req.json(); } catch { /* empty body ok */ }
-      } else {
-        input = Object.fromEntries(url.searchParams.entries());
+      const query: Record<string, string> = {};
+      url.searchParams.forEach((v, k) => { if (k !== "id") query[k] = v; });
+      const headers: Record<string, string> = {};
+      req.headers.forEach((v, k) => { headers[k] = v; });
+
+      let body: unknown = null;
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        const ct = req.headers.get("content-type") ?? "";
+        try {
+          if (ct.includes("application/json")) body = await req.json();
+          else if (ct.includes("application/x-www-form-urlencoded")) {
+            const t = await req.text();
+            body = Object.fromEntries(new URLSearchParams(t));
+          } else body = await req.text();
+        } catch { /* empty body ok */ }
       }
+
+      const httpInput = {
+        method: req.method,
+        path: url.pathname,
+        query,
+        headers,
+        body,
+        url: req.url,
+      };
+
       const { data: row, error } = await admin
         .from("functions")
         .select("id,user_id,code,timeout_ms,invocation_count")
         .eq("id", publicId)
         .maybeSingle();
       if (error || !row) return json(404, { error: "Function not found" });
-      const out = await executeFunction(row as FnRow, input, admin);
-      return json(out.status === "success" ? 200 : 500, out);
+      const out = await executeFunction(row as FnRow, httpInput, admin);
+
+      if (out.status !== "success") {
+        return json(500, out);
+      }
+
+      // If the handler returned an HTTP-shaped response, honor it.
+      const r = out.result;
+      if (isHttpResponse(r)) {
+        const respHeaders: Record<string, string> = { ...corsHeaders, ...(r.headers ?? {}) };
+        const status = r.status ?? 200;
+        let body: BodyInit | null = null;
+        if (r.body == null) {
+          body = null;
+        } else if (typeof r.body === "string") {
+          body = r.body;
+          if (!respHeaders["Content-Type"] && !respHeaders["content-type"]) respHeaders["Content-Type"] = "text/plain; charset=utf-8";
+        } else {
+          body = JSON.stringify(r.body);
+          if (!respHeaders["Content-Type"] && !respHeaders["content-type"]) respHeaders["Content-Type"] = "application/json";
+        }
+        return new Response(body, { status, headers: respHeaders });
+      }
+
+      return json(200, r);
     }
 
     // Authenticated invoke path
@@ -139,7 +188,23 @@ Deno.serve(async (req) => {
     const userId = userData.user.id;
 
     const body = await req.json().catch(() => ({}));
-    const { action, function_id, input } = body ?? {};
+    const { action, function_id, input, retention_days } = body ?? {};
+
+    // Retention: purge invocations older than N days
+    if (action === "purge") {
+      if (!function_id) return json(400, { error: "function_id required" });
+      const days = Math.max(0, Number(retention_days ?? 30));
+      const cutoff = new Date(Date.now() - days * 86400_000).toISOString();
+      const { data: row } = await admin.from("functions").select("user_id").eq("id", function_id).maybeSingle();
+      if (!row || (row as { user_id: string }).user_id !== userId) return json(403, { error: "Forbidden" });
+      const { error: delErr, count } = await admin
+        .from("function_invocations")
+        .delete({ count: "exact" })
+        .eq("function_id", function_id)
+        .lt("invoked_at", cutoff);
+      if (delErr) return json(500, { error: delErr.message });
+      return json(200, { ok: true, purged: count ?? 0, cutoff });
+    }
 
     if (action !== "invoke") return json(400, { error: "Unknown action" });
     if (!function_id) return json(400, { error: "function_id required" });
