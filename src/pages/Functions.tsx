@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import {
   FunctionSquare, Plus, Play, Trash2, Copy, Code2, Clock, Activity, RefreshCw,
+  Download, Eraser,
 } from "lucide-react";
 
 type Fn = {
@@ -40,14 +41,22 @@ type Invocation = {
   invoked_at: string;
 };
 
-const STARTER = `// Africa Cloud function. The default export receives the request input
-// and can return any JSON-serializable value.
-export default async (input) => {
-  console.log("invoked with", input);
+const STARTER = `// Africa Cloud function.
+// When called via the authenticated Console, "req" is your input JSON.
+// When called via the public URL, "req" is an HTTP request:
+//   { method, path, query, headers, body, url }
+// Return any JSON value, OR an HTTP response: { status, headers, body }.
+export default async (req) => {
+  console.log("invoked with", req);
+  // HTTP-style response example:
   return {
-    message: "hello from africa cloud",
-    at: new Date().toISOString(),
-    echo: input,
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+    body: {
+      message: "hello from africa cloud",
+      at: new Date().toISOString(),
+      echo: req,
+    },
   };
 };`;
 
