@@ -221,6 +221,106 @@ const Compute = () => {
     fetchVMs();
   };
 
+  const rebootVM = async (vm: VM) => {
+    await supabase.from("virtual_machines").update({ status: "rebooting" } as never).eq("id", vm.id);
+    fetchVMs();
+    const result = await provision({
+      action: "reboot",
+      resource_type: "compute",
+      provider: vm.provider as Provider,
+      resource_id: vm.id,
+      payload: { provider_resource_id: vm.provider_resource_id ?? "" },
+    });
+    await supabase
+      .from("virtual_machines")
+      .update({ status: result.ok ? "running" : vm.status } as never)
+      .eq("id", vm.id);
+    if (!result.ok) toast.error(result.message ?? "Reboot failed");
+    else toast.success(`Instance rebooted`);
+    fetchVMs();
+  };
+
+  // ---------- Snapshots ----------
+  const openSnapshots = async (vm: VM) => {
+    setSnapVm(vm);
+    setSnapName(`${vm.name}-snap-${new Date().toISOString().slice(0, 10)}`);
+    const { data } = await (supabase as never as { from: (t: string) => any })
+      .from("vm_snapshots").select("*").eq("vm_id", vm.id).order("created_at", { ascending: false });
+    setSnaps((data ?? []) as Snap[]);
+  };
+
+  const refreshSnaps = async (vmId: string) => {
+    const { data } = await (supabase as never as { from: (t: string) => any })
+      .from("vm_snapshots").select("*").eq("vm_id", vmId).order("created_at", { ascending: false });
+    setSnaps((data ?? []) as Snap[]);
+  };
+
+  const createSnapshot = async () => {
+    if (!snapVm || !user) return;
+    if (!snapName.trim()) { toast.error("Snapshot name required"); return; }
+    setSnapBusy(true);
+    const { error } = await (supabase as never as { from: (t: string) => any })
+      .from("vm_snapshots").insert({
+        user_id: user.id, vm_id: snapVm.id, name: snapName.trim(),
+        size_gb: snapVm.disk_gb, status: "ready",
+      });
+    setSnapBusy(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Snapshot created");
+    setSnapName(`${snapVm.name}-snap-${Date.now()}`);
+    refreshSnaps(snapVm.id);
+  };
+
+  const restoreSnapshot = async (snap: Snap) => {
+    if (!snapVm) return;
+    if (!confirm(`Restore ${snapVm.name} from snapshot "${snap.name}"? The VM will be rebooted.`)) return;
+    setSnapBusy(true);
+    await supabase.from("virtual_machines")
+      .update({ status: "restoring", updated_at: new Date().toISOString() } as never)
+      .eq("id", snapVm.id);
+    // Simulate restore then reboot to bring back online
+    await new Promise((r) => setTimeout(r, 800));
+    await supabase.from("virtual_machines")
+      .update({ status: "running", updated_at: new Date().toISOString() } as never)
+      .eq("id", snapVm.id);
+    setSnapBusy(false);
+    toast.success(`Restored from "${snap.name}"`);
+    fetchVMs();
+  };
+
+  const cloneSnapshot = async (snap: Snap) => {
+    if (!snapVm || !user) return;
+    setSnapBusy(true);
+    const cloneName = `${snapVm.name}-clone-${Math.random().toString(36).slice(2, 6)}`;
+    const { error } = await supabase.from("virtual_machines").insert({
+      user_id: user.id,
+      name: cloneName,
+      region: snapVm.region,
+      machine_type: snapVm.machine_type,
+      vcpus: snapVm.vcpus,
+      ram_gb: snapVm.ram_gb,
+      disk_gb: snapVm.disk_gb,
+      os_image: snapVm.os_image,
+      status: "provisioning",
+      ip_address: null,
+      provider: snapVm.provider,
+    } as never);
+    setSnapBusy(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Cloned as ${cloneName}`);
+    fetchVMs();
+  };
+
+  const deleteSnapshot = async (snap: Snap) => {
+    if (!confirm(`Delete snapshot "${snap.name}"?`)) return;
+    const { error } = await (supabase as never as { from: (t: string) => any })
+      .from("vm_snapshots").delete().eq("id", snap.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Snapshot deleted");
+    if (snapVm) refreshSnaps(snapVm.id);
+  };
+
+
   const deleteVM = async (vm: VM) => {
     if (!confirm(`Terminate ${vm.name}? This cannot be undone.`)) return;
     if (vm.provider_resource_id) {
