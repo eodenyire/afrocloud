@@ -492,9 +492,16 @@ const Networking = () => {
             <h2 className="text-lg font-heading font-semibold text-foreground">
               {tab === "vpcs" ? "Virtual Private Clouds" : tab === "load-balancers" ? "Load Balancers" : "DNS Records"}
             </h2>
-            <Button variant="ghost" size="sm" onClick={fetchAll}>
-              <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
-            </Button>
+            <div className="flex items-center gap-2">
+              {tab === "dns" && (
+                <Button variant="outline" size="sm" onClick={() => setShowHistory(true)} className="gap-1.5">
+                  <History className="h-3.5 w-3.5" /> History ({dnsHistory.length})
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" onClick={fetchAll}>
+                <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
+              </Button>
+            </div>
           </div>
 
           {/* VPCs */}
