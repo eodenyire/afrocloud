@@ -558,6 +558,23 @@ const Compute = () => {
                         <Button
                           variant="ghost"
                           size="icon"
+                          title="Reboot"
+                          onClick={() => rebootVM(vm)}
+                          disabled={vm.status !== "running"}
+                        >
+                          <RotateCw className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Snapshots"
+                          onClick={() => openSnapshots(vm)}
+                        >
+                          <Camera className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={() => toggleVM(vm)}
                           disabled={vm.status === "provisioning" || vm.status === "terminating"}
                         >
@@ -592,6 +609,56 @@ const Compute = () => {
         onOpenChange={(v) => !v && setConnectTarget(null)}
         target={connectTarget}
       />
+
+      {/* Snapshots dialog */}
+      <Dialog open={!!snapVm} onOpenChange={(v) => { if (!v) { setSnapVm(null); setSnaps([]); } }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Snapshots — {snapVm?.name}</DialogTitle>
+            <DialogDescription>
+              Create point-in-time snapshots, restore the VM, or clone into a new instance.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Label className="text-xs">New snapshot name</Label>
+                <Input value={snapName} onChange={(e) => setSnapName(e.target.value)} />
+              </div>
+              <Button onClick={createSnapshot} disabled={snapBusy}>
+                <Camera className="h-4 w-4 mr-1" /> Snapshot
+              </Button>
+            </div>
+            <div className="max-h-72 overflow-auto space-y-2">
+              {snaps.length === 0 && <p className="text-xs text-muted-foreground">No snapshots yet.</p>}
+              {snaps.map((s) => (
+                <div key={s.id} className="border border-border rounded-md p-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">{s.name}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {s.size_gb} GB · {s.status} · {new Date(s.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button size="sm" variant="outline" onClick={() => restoreSnapshot(s)} disabled={snapBusy}>
+                      <Undo2 className="h-3.5 w-3.5 mr-1" /> Restore
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => cloneSnapshot(s)} disabled={snapBusy}>
+                      <CopyIcon className="h-3.5 w-3.5 mr-1" /> Clone
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => deleteSnapshot(s)} disabled={snapBusy}>
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSnapVm(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ConsoleLayout>
   );
 };
