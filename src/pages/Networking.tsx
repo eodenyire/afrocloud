@@ -52,6 +52,27 @@ type VPC = { id: string; name: string; region: string; cidr_block: string; statu
 type LB = { id: string; name: string; region: string; lb_type: string; protocol: string; port: number; target_count: number; status: string; dns_name: string | null; created_at: string | null };
 type DNS = { id: string; zone: string; record_type: string; name: string; value: string; ttl: number; status: string; created_at: string | null };
 
+
+// ---- DNS record validation ----
+const IPV4 = /^(25[0-5]|2[0-4]\d|[01]?\d?\d)(\.(25[0-5]|2[0-4]\d|[01]?\d?\d)){3}$/;
+const IPV6 = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|::)/;
+const HOSTNAME = /^([a-zA-Z0-9_](?:[a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])?)(\.[a-zA-Z0-9_](?:[a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])?)*\.?$/;
+const validateDns = (type: string, value: string): string | null => {
+  const v = value.trim();
+  if (!v) return "Value required";
+  switch (type) {
+    case "A": return IPV4.test(v) ? null : "Must be a valid IPv4 address (e.g. 10.0.1.1)";
+    case "AAAA": return IPV6.test(v) ? null : "Must be a valid IPv6 address";
+    case "CNAME":
+    case "NS": return HOSTNAME.test(v) ? null : "Must be a valid hostname";
+    case "MX": return /^\d+\s+\S+$/.test(v) ? null : "Format: <priority> <hostname>  (e.g. 10 mail.example.com)";
+    case "TXT": return v.length <= 512 ? null : "TXT value too long (>512)";
+    default: return null;
+  }
+};
+
+type DnsHistoryEntry = { id: string; ts: string; action: string; record: string; details: string };
+
 const Networking = () => {
   const { user, loading } = useAuth();
   const { organization, project, loading: workspaceLoading } = useWorkspace();
