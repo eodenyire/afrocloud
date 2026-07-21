@@ -7,9 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import {
   Cloud, Network, Plus, Trash2, RefreshCw,
-  Globe, Shield, Wifi, Server, Copy, Radio,
+  Globe, Shield, Wifi, Server, Copy, Radio, Pencil, History,
 } from "lucide-react";
 import { ConsoleLayout } from "@/components/ConsoleLayout";
+import { supabase } from "@/integrations/supabase/client";
 import {
   createDnsRecord,
   createLoadBalancer,
