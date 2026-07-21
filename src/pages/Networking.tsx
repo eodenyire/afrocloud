@@ -195,20 +195,25 @@ const Networking = () => {
 
   const handleCreateDns = async () => {
     if (!dnsZone.trim() || !dnsName.trim() || !dnsValue.trim()) { toast.error("All fields required"); return; }
+    const err = validateDns(dnsType, dnsValue);
+    if (err) { setDnsError(err); toast.error(err); return; }
+    setDnsError(null);
     if (!organization?.id) { toast.error("Organization context missing"); return; }
     setCreating(true);
     try {
+      const rec = {
+        zone: dnsZone.trim(),
+        record_type: dnsType,
+        name: dnsName.trim(),
+        value: dnsValue.trim(),
+        ttl: dnsTtl,
+        status: "active",
+      };
       await createDnsRecord(
         { userId: user!.id, orgId: organization.id, projectId: project?.id ?? null },
-        {
-          zone: dnsZone.trim(),
-          record_type: dnsType,
-          name: dnsName.trim(),
-          value: dnsValue.trim(),
-          ttl: dnsTtl,
-          status: "active",
-        }
+        rec
       );
+      pushHistory("create", rec, `value=${rec.value} ttl=${rec.ttl}`);
       toast.success("DNS record created");
       resetForms();
       fetchAll();
@@ -217,6 +222,27 @@ const Networking = () => {
     }
     setCreating(false);
   };
+
+  const handleUpdateDns = async () => {
+    if (!editingDns) return;
+    const err = validateDns(editingDns.record_type, editingDns.value);
+    if (err) { toast.error(err); return; }
+    const { error } = await supabase
+      .from("dns_records")
+      .update({
+        value: editingDns.value.trim(),
+        ttl: editingDns.ttl,
+        record_type: editingDns.record_type,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq("id", editingDns.id);
+    if (error) { toast.error(error.message); return; }
+    pushHistory("update", editingDns, `value=${editingDns.value} ttl=${editingDns.ttl}`);
+    toast.success("DNS record updated");
+    setEditingDns(null);
+    fetchAll();
+  };
+
 
   const deleteVpc = async (id: string) => {
     try {
