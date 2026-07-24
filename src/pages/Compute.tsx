@@ -631,6 +631,11 @@ const Compute = () => {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">
+                        <Checkbox
+                          checked={selected.has(vm.id)}
+                          onCheckedChange={() => toggleSelected(vm.id)}
+                          aria-label={`Select ${vm.name}`}
+                        />
                         <div className="h-10 w-10 rounded-lg bg-secondary flex items-center justify-center">
                           <Server className="h-5 w-5 text-primary" />
                         </div>
