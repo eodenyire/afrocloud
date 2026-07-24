@@ -69,8 +69,17 @@ const STATUS_COLORS: Record<string, string> = {
   running: "text-green-400 bg-green-400/10",
   stopped: "text-muted-foreground bg-muted",
   provisioning: "text-primary bg-primary/10",
+  starting: "text-amber-400 bg-amber-400/10",
+  stopping: "text-amber-400 bg-amber-400/10",
+  rebooting: "text-amber-400 bg-amber-400/10",
+  restoring: "text-amber-400 bg-amber-400/10",
   terminating: "text-destructive bg-destructive/10",
+  failed: "text-destructive bg-destructive/10",
 };
+
+const TRANSIENT_STATUSES = new Set([
+  "provisioning", "starting", "stopping", "rebooting", "restoring", "terminating",
+]);
 
 type VM = {
   id: string;
@@ -572,18 +581,38 @@ const Compute = () => {
                         >
                           <Camera className="h-4 w-4 text-muted-foreground" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => toggleVM(vm)}
-                          disabled={vm.status === "provisioning" || vm.status === "terminating"}
-                        >
-                          {vm.status === "running" ? (
-                            <PowerOff className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <Power className="h-4 w-4 text-green-400" />
-                          )}
-                        </Button>
+                        {vm.status === "running" ? (
+                          <ConfirmDialog
+                            title={`Stop instance "${vm.name}"?`}
+                            description="The VM will be powered off. Running processes will terminate and the instance will be unreachable until you start it again. Ephemeral storage may be lost depending on the provider."
+                            confirmLabel="Stop instance"
+                            destructive={false}
+                            onConfirm={() => toggleVM(vm)}
+                            trigger={
+                              <Button variant="ghost" size="icon" title="Stop">
+                                <PowerOff className="h-4 w-4 text-muted-foreground" />
+                              </Button>
+                            }
+                          />
+                        ) : (
+                          <ConfirmDialog
+                            title={`Start instance "${vm.name}"?`}
+                            description="The VM will be powered on. Billing resumes immediately and the instance will become reachable once boot completes."
+                            confirmLabel="Start instance"
+                            destructive={false}
+                            onConfirm={() => toggleVM(vm)}
+                            trigger={
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Start"
+                                disabled={TRANSIENT_STATUSES.has(vm.status)}
+                              >
+                                <Power className="h-4 w-4 text-green-400" />
+                              </Button>
+                            }
+                          />
+                        )}
                         <ConfirmDialog
                           title={`Delete VM "${vm.name}"?`}
                           description="This permanently destroys the virtual machine on the upstream provider and removes its record. Attached volumes and snapshots may be lost. This action cannot be undone."
