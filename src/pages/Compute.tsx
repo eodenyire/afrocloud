@@ -69,8 +69,17 @@ const STATUS_COLORS: Record<string, string> = {
   running: "text-green-400 bg-green-400/10",
   stopped: "text-muted-foreground bg-muted",
   provisioning: "text-primary bg-primary/10",
+  starting: "text-amber-400 bg-amber-400/10",
+  stopping: "text-amber-400 bg-amber-400/10",
+  rebooting: "text-amber-400 bg-amber-400/10",
+  restoring: "text-amber-400 bg-amber-400/10",
   terminating: "text-destructive bg-destructive/10",
+  failed: "text-destructive bg-destructive/10",
 };
+
+const TRANSIENT_STATUSES = new Set([
+  "provisioning", "starting", "stopping", "rebooting", "restoring", "terminating",
+]);
 
 type VM = {
   id: string;
