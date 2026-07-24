@@ -547,12 +547,70 @@ const Compute = () => {
 
         {/* VM List */}
         <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-heading font-semibold text-foreground">Your Instances</h2>
-            <Button variant="ghost" size="sm" onClick={fetchVMs}>
-              <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
-            </Button>
+          <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-heading font-semibold text-foreground">Your Instances</h2>
+              {vms.length > 0 && (
+                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                  <Checkbox
+                    checked={selected.size > 0 && selected.size === vms.length}
+                    onCheckedChange={(v) =>
+                      setSelected(v ? new Set(vms.map((x) => x.id)) : new Set())
+                    }
+                  />
+                  Select all
+                </label>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {selected.size > 0 && (
+                <>
+                  <span className="text-xs text-muted-foreground">
+                    {selected.size} selected
+                  </span>
+                  <ConfirmDialog
+                    title={`Start ${canStart.length} instance${canStart.length === 1 ? "" : "s"}?`}
+                    description={
+                      canStart.length === 0
+                        ? "None of the selected instances are stopped."
+                        : `The following stopped instances will be powered on: ${canStart.map((v) => v.name).join(", ")}. Billing resumes immediately.`
+                    }
+                    confirmLabel={`Start ${canStart.length}`}
+                    destructive={false}
+                    onConfirm={() => bulkAction("start")}
+                    trigger={
+                      <Button size="sm" variant="outline" className="gap-1.5" disabled={bulkBusy || canStart.length === 0}>
+                        <Power className="h-3.5 w-3.5 text-green-400" /> Start
+                      </Button>
+                    }
+                  />
+                  <ConfirmDialog
+                    title={`Stop ${canStop.length} instance${canStop.length === 1 ? "" : "s"}?`}
+                    description={
+                      canStop.length === 0
+                        ? "None of the selected instances are running."
+                        : `The following running instances will be powered off: ${canStop.map((v) => v.name).join(", ")}. Active connections and processes will terminate.`
+                    }
+                    confirmLabel={`Stop ${canStop.length}`}
+                    destructive={false}
+                    onConfirm={() => bulkAction("stop")}
+                    trigger={
+                      <Button size="sm" variant="outline" className="gap-1.5" disabled={bulkBusy || canStop.length === 0}>
+                        <PowerOff className="h-3.5 w-3.5" /> Stop
+                      </Button>
+                    }
+                  />
+                  <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} disabled={bulkBusy}>
+                    Clear
+                  </Button>
+                </>
+              )}
+              <Button variant="ghost" size="sm" onClick={fetchVMs}>
+                <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
+              </Button>
+            </div>
           </div>
+
 
           {vms.length === 0 && !fetching ? (
             <Card className="border-dashed">
