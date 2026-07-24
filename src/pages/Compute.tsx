@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ConsoleLayout } from "@/components/ConsoleLayout";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ConnectDialog, type ConnectTarget } from "@/components/ConnectDialog";
@@ -121,6 +122,55 @@ const Compute = () => {
   const [snaps, setSnaps] = useState<Snap[]>([]);
   const [snapName, setSnapName] = useState("");
   const [snapBusy, setSnapBusy] = useState(false);
+
+  // Bulk selection
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const toggleSelected = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  const selectedVms = vms.filter((v) => selected.has(v.id));
+  const canStart = selectedVms.filter((v) => v.status === "stopped");
+  const canStop = selectedVms.filter((v) => v.status === "running");
+
+  const bulkAction = async (action: "start" | "stop") => {
+    const targets = action === "start" ? canStart : canStop;
+    if (targets.length === 0) return;
+    setBulkBusy(true);
+    const transient = action === "start" ? "starting" : "stopping";
+    await supabase
+      .from("virtual_machines")
+      .update({ status: transient } as never)
+      .in("id", targets.map((v) => v.id));
+    fetchVMs();
+    let ok = 0, fail = 0;
+    await Promise.all(
+      targets.map(async (vm) => {
+        const result = await provision({
+          action,
+          resource_type: "compute",
+          provider: vm.provider as Provider,
+          resource_id: vm.id,
+          payload: { provider_resource_id: vm.provider_resource_id ?? "" },
+        });
+        await supabase
+          .from("virtual_machines")
+          .update({
+            status: result.ok ? (action === "start" ? "running" : "stopped") : vm.status,
+          } as never)
+          .eq("id", vm.id);
+        result.ok ? ok++ : fail++;
+      })
+    );
+    setBulkBusy(false);
+    setSelected(new Set());
+    fetchVMs();
+    if (fail === 0) toast.success(`${ok} instance${ok === 1 ? "" : "s"} ${action}ed`);
+    else toast.error(`${ok} succeeded, ${fail} failed`);
+  };
 
   useEffect(() => {
     if (!loading && !user) navigate("/auth");
@@ -498,12 +548,70 @@ const Compute = () => {
 
         {/* VM List */}
         <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-heading font-semibold text-foreground">Your Instances</h2>
-            <Button variant="ghost" size="sm" onClick={fetchVMs}>
-              <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
-            </Button>
+          <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-heading font-semibold text-foreground">Your Instances</h2>
+              {vms.length > 0 && (
+                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                  <Checkbox
+                    checked={selected.size > 0 && selected.size === vms.length}
+                    onCheckedChange={(v) =>
+                      setSelected(v ? new Set(vms.map((x) => x.id)) : new Set())
+                    }
+                  />
+                  Select all
+                </label>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {selected.size > 0 && (
+                <>
+                  <span className="text-xs text-muted-foreground">
+                    {selected.size} selected
+                  </span>
+                  <ConfirmDialog
+                    title={`Start ${canStart.length} instance${canStart.length === 1 ? "" : "s"}?`}
+                    description={
+                      canStart.length === 0
+                        ? "None of the selected instances are stopped."
+                        : `The following stopped instances will be powered on: ${canStart.map((v) => v.name).join(", ")}. Billing resumes immediately.`
+                    }
+                    confirmLabel={`Start ${canStart.length}`}
+                    destructive={false}
+                    onConfirm={() => bulkAction("start")}
+                    trigger={
+                      <Button size="sm" variant="outline" className="gap-1.5" disabled={bulkBusy || canStart.length === 0}>
+                        <Power className="h-3.5 w-3.5 text-green-400" /> Start
+                      </Button>
+                    }
+                  />
+                  <ConfirmDialog
+                    title={`Stop ${canStop.length} instance${canStop.length === 1 ? "" : "s"}?`}
+                    description={
+                      canStop.length === 0
+                        ? "None of the selected instances are running."
+                        : `The following running instances will be powered off: ${canStop.map((v) => v.name).join(", ")}. Active connections and processes will terminate.`
+                    }
+                    confirmLabel={`Stop ${canStop.length}`}
+                    destructive={false}
+                    onConfirm={() => bulkAction("stop")}
+                    trigger={
+                      <Button size="sm" variant="outline" className="gap-1.5" disabled={bulkBusy || canStop.length === 0}>
+                        <PowerOff className="h-3.5 w-3.5" /> Stop
+                      </Button>
+                    }
+                  />
+                  <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} disabled={bulkBusy}>
+                    Clear
+                  </Button>
+                </>
+              )}
+              <Button variant="ghost" size="sm" onClick={fetchVMs}>
+                <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
+              </Button>
+            </div>
           </div>
+
 
           {vms.length === 0 && !fetching ? (
             <Card className="border-dashed">
@@ -523,6 +631,11 @@ const Compute = () => {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">
+                        <Checkbox
+                          checked={selected.has(vm.id)}
+                          onCheckedChange={() => toggleSelected(vm.id)}
+                          aria-label={`Select ${vm.name}`}
+                        />
                         <div className="h-10 w-10 rounded-lg bg-secondary flex items-center justify-center">
                           <Server className="h-5 w-5 text-primary" />
                         </div>
