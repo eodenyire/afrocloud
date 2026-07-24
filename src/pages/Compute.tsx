@@ -122,6 +122,55 @@ const Compute = () => {
   const [snapName, setSnapName] = useState("");
   const [snapBusy, setSnapBusy] = useState(false);
 
+  // Bulk selection
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const toggleSelected = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  const selectedVms = vms.filter((v) => selected.has(v.id));
+  const canStart = selectedVms.filter((v) => v.status === "stopped");
+  const canStop = selectedVms.filter((v) => v.status === "running");
+
+  const bulkAction = async (action: "start" | "stop") => {
+    const targets = action === "start" ? canStart : canStop;
+    if (targets.length === 0) return;
+    setBulkBusy(true);
+    const transient = action === "start" ? "starting" : "stopping";
+    await supabase
+      .from("virtual_machines")
+      .update({ status: transient } as never)
+      .in("id", targets.map((v) => v.id));
+    fetchVMs();
+    let ok = 0, fail = 0;
+    await Promise.all(
+      targets.map(async (vm) => {
+        const result = await provision({
+          action,
+          resource_type: "compute",
+          provider: vm.provider as Provider,
+          resource_id: vm.id,
+          payload: { provider_resource_id: vm.provider_resource_id ?? "" },
+        });
+        await supabase
+          .from("virtual_machines")
+          .update({
+            status: result.ok ? (action === "start" ? "running" : "stopped") : vm.status,
+          } as never)
+          .eq("id", vm.id);
+        result.ok ? ok++ : fail++;
+      })
+    );
+    setBulkBusy(false);
+    setSelected(new Set());
+    fetchVMs();
+    if (fail === 0) toast.success(`${ok} instance${ok === 1 ? "" : "s"} ${action}ed`);
+    else toast.error(`${ok} succeeded, ${fail} failed`);
+  };
+
   useEffect(() => {
     if (!loading && !user) navigate("/auth");
   }, [user, loading, navigate]);
