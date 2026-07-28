@@ -657,6 +657,63 @@ const Compute = () => {
             </div>
           </div>
 
+          {bulkProgress.length > 0 && (() => {
+            const done = bulkProgress.filter((p) => p.state === "success" || p.state === "error").length;
+            const okCount = bulkProgress.filter((p) => p.state === "success").length;
+            const errCount = bulkProgress.filter((p) => p.state === "error").length;
+            const pct = Math.round((done / bulkProgress.length) * 100);
+            return (
+              <Card className="mb-4 border-primary/30">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      {bulkBusy ? <RefreshCw className="h-4 w-4 text-primary animate-spin" /> : <Server className="h-4 w-4 text-primary" />}
+                      <div className="font-heading text-sm font-semibold text-foreground">{bulkLabel}</div>
+                      <span className="text-xs text-muted-foreground">
+                        {done}/{bulkProgress.length} · {okCount} ok{errCount ? ` · ${errCount} failed` : ""}
+                      </span>
+                    </div>
+                    {!bulkBusy && (
+                      <Button size="sm" variant="ghost" onClick={() => setBulkProgress([])}>Dismiss</Button>
+                    )}
+                  </div>
+                  <div className="h-1.5 rounded-full bg-secondary overflow-hidden mb-3">
+                    <div
+                      className={`h-full transition-all ${errCount > 0 && !bulkBusy ? "bg-destructive" : "bg-primary"}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                    {bulkProgress.map((p) => (
+                      <div key={p.id} className="flex items-start gap-3 text-xs">
+                        <div className="w-4 pt-0.5 flex-shrink-0">
+                          {p.state === "pending" && <div className="h-2 w-2 rounded-full bg-muted-foreground/40 mx-auto" />}
+                          {p.state === "running" && <RefreshCw className="h-3 w-3 text-amber-400 animate-spin" />}
+                          {p.state === "success" && <div className="h-2 w-2 rounded-full bg-green-400 mx-auto" />}
+                          {p.state === "error" && <div className="h-2 w-2 rounded-full bg-destructive mx-auto" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-foreground truncate">{p.name}</span>
+                            <span className="text-muted-foreground capitalize">
+                              {p.from}{p.to ? ` → ${p.to}` : ""}
+                            </span>
+                            {p.ms != null && <span className="text-muted-foreground">· {p.ms}ms</span>}
+                          </div>
+                          {p.message && (
+                            <div className="text-destructive mt-0.5 break-words">{p.message}</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
+
+
+
 
           {vms.length === 0 && !fetching ? (
             <Card className="border-dashed">
