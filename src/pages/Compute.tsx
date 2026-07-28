@@ -135,12 +135,13 @@ const Compute = () => {
   const selectedVms = vms.filter((v) => selected.has(v.id));
   const canStart = selectedVms.filter((v) => v.status === "stopped");
   const canStop = selectedVms.filter((v) => v.status === "running");
+  const canReboot = selectedVms.filter((v) => v.status === "running" || v.status === "stopped");
 
-  const bulkAction = async (action: "start" | "stop") => {
-    const targets = action === "start" ? canStart : canStop;
+  const bulkAction = async (action: "start" | "stop" | "reboot") => {
+    const targets = action === "start" ? canStart : action === "stop" ? canStop : canReboot;
     if (targets.length === 0) return;
     setBulkBusy(true);
-    const transient = action === "start" ? "starting" : "stopping";
+    const transient = action === "start" ? "starting" : action === "stop" ? "stopping" : "rebooting";
     await supabase
       .from("virtual_machines")
       .update({ status: transient } as never)
@@ -159,7 +160,7 @@ const Compute = () => {
         await supabase
           .from("virtual_machines")
           .update({
-            status: result.ok ? (action === "start" ? "running" : "stopped") : vm.status,
+            status: result.ok ? (action === "stop" ? "stopped" : "running") : vm.status,
           } as never)
           .eq("id", vm.id);
         result.ok ? ok++ : fail++;
@@ -168,7 +169,8 @@ const Compute = () => {
     setBulkBusy(false);
     setSelected(new Set());
     fetchVMs();
-    if (fail === 0) toast.success(`${ok} instance${ok === 1 ? "" : "s"} ${action}ed`);
+    const verb = action === "reboot" ? "rebooted" : `${action}ed`;
+    if (fail === 0) toast.success(`${ok} instance${ok === 1 ? "" : "s"} ${verb}`);
     else toast.error(`${ok} succeeded, ${fail} failed`);
   };
 
@@ -598,6 +600,22 @@ const Compute = () => {
                     trigger={
                       <Button size="sm" variant="outline" className="gap-1.5" disabled={bulkBusy || canStop.length === 0}>
                         <PowerOff className="h-3.5 w-3.5" /> Stop
+                      </Button>
+                    }
+                  />
+                  <ConfirmDialog
+                    title={`Reboot ${canReboot.length} instance${canReboot.length === 1 ? "" : "s"}?`}
+                    description={
+                      canReboot.length === 0
+                        ? "None of the selected instances can be rebooted."
+                        : `The following instances will be restarted: ${canReboot.map((v) => v.name).join(", ")}. Active connections and processes will be interrupted.`
+                    }
+                    confirmLabel={`Reboot ${canReboot.length}`}
+                    destructive={false}
+                    onConfirm={() => bulkAction("reboot")}
+                    trigger={
+                      <Button size="sm" variant="outline" className="gap-1.5" disabled={bulkBusy || canReboot.length === 0}>
+                        <RotateCw className="h-3.5 w-3.5" /> Reboot
                       </Button>
                     }
                   />
