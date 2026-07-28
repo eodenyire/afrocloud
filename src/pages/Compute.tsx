@@ -126,6 +126,18 @@ const Compute = () => {
   // Bulk selection
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  type BulkItem = {
+    id: string;
+    name: string;
+    action: "start" | "stop" | "reboot";
+    state: "pending" | "running" | "success" | "error";
+    from: string;
+    to?: string;
+    message?: string;
+    ms?: number;
+  };
+  const [bulkProgress, setBulkProgress] = useState<BulkItem[]>([]);
+  const [bulkLabel, setBulkLabel] = useState<string>("");
   const toggleSelected = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -142,6 +154,13 @@ const Compute = () => {
     if (targets.length === 0) return;
     setBulkBusy(true);
     const transient = action === "start" ? "starting" : action === "stop" ? "stopping" : "rebooting";
+    const finalOk = action === "stop" ? "stopped" : "running";
+    setBulkLabel(`${action[0].toUpperCase() + action.slice(1)} ${targets.length} instance${targets.length === 1 ? "" : "s"}`);
+    setBulkProgress(
+      targets.map((v) => ({
+        id: v.id, name: v.name, action, state: "pending", from: v.status, to: transient,
+      }))
+    );
     await supabase
       .from("virtual_machines")
       .update({ status: transient } as never)
@@ -150,6 +169,8 @@ const Compute = () => {
     let ok = 0, fail = 0;
     await Promise.all(
       targets.map(async (vm) => {
+        const t0 = performance.now();
+        setBulkProgress((prev) => prev.map((p) => p.id === vm.id ? { ...p, state: "running" } : p));
         const result = await provision({
           action,
           resource_type: "compute",
@@ -157,12 +178,18 @@ const Compute = () => {
           resource_id: vm.id,
           payload: { provider_resource_id: vm.provider_resource_id ?? "" },
         });
+        const ms = Math.round(performance.now() - t0);
         await supabase
           .from("virtual_machines")
-          .update({
-            status: result.ok ? (action === "stop" ? "stopped" : "running") : vm.status,
-          } as never)
+          .update({ status: result.ok ? finalOk : "failed" } as never)
           .eq("id", vm.id);
+        setBulkProgress((prev) => prev.map((p) => p.id === vm.id ? {
+          ...p,
+          state: result.ok ? "success" : "error",
+          to: result.ok ? finalOk : "failed",
+          message: result.ok ? undefined : (result.message ?? "Provider returned an error"),
+          ms,
+        } : p));
         result.ok ? ok++ : fail++;
       })
     );
@@ -171,7 +198,7 @@ const Compute = () => {
     fetchVMs();
     const verb = action === "reboot" ? "rebooted" : `${action}ed`;
     if (fail === 0) toast.success(`${ok} instance${ok === 1 ? "" : "s"} ${verb}`);
-    else toast.error(`${ok} succeeded, ${fail} failed`);
+    else toast.error(`${ok} succeeded, ${fail} failed — see progress panel`);
   };
 
   useEffect(() => {
