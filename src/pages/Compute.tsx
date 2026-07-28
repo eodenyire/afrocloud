@@ -603,6 +603,22 @@ const Compute = () => {
                       </Button>
                     }
                   />
+                  <ConfirmDialog
+                    title={`Reboot ${canReboot.length} instance${canReboot.length === 1 ? "" : "s"}?`}
+                    description={
+                      canReboot.length === 0
+                        ? "None of the selected instances can be rebooted."
+                        : `The following instances will be restarted: ${canReboot.map((v) => v.name).join(", ")}. Active connections and processes will be interrupted.`
+                    }
+                    confirmLabel={`Reboot ${canReboot.length}`}
+                    destructive={false}
+                    onConfirm={() => bulkAction("reboot")}
+                    trigger={
+                      <Button size="sm" variant="outline" className="gap-1.5" disabled={bulkBusy || canReboot.length === 0}>
+                        <RotateCw className="h-3.5 w-3.5" /> Reboot
+                      </Button>
+                    }
+                  />
                   <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} disabled={bulkBusy}>
                     Clear
                   </Button>
