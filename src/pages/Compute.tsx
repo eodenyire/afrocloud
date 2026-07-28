@@ -1,7 +1,7 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
@@ -130,7 +130,7 @@ const Compute = () => {
     id: string;
     name: string;
     action: "start" | "stop" | "reboot";
-    state: "pending" | "running" | "success" | "error";
+    state: "pending" | "running" | "success" | "error" | "cancelled";
     from: string;
     to?: string;
     message?: string;
@@ -138,6 +138,8 @@ const Compute = () => {
   };
   const [bulkProgress, setBulkProgress] = useState<BulkItem[]>([]);
   const [bulkLabel, setBulkLabel] = useState<string>("");
+  const cancelRef = useRef(false);
+  const [cancelRequested, setCancelRequested] = useState(false);
   const toggleSelected = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -149,9 +151,25 @@ const Compute = () => {
   const canStop = selectedVms.filter((v) => v.status === "running");
   const canReboot = selectedVms.filter((v) => v.status === "running" || v.status === "stopped");
 
+  const requestBulkCancel = () => {
+    if (!bulkBusy) return;
+    cancelRef.current = true;
+    setCancelRequested(true);
+    // Immediately mark any pending (not-yet-started) items as cancelled
+    setBulkProgress((prev) =>
+      prev.map((p) =>
+        p.state === "pending"
+          ? { ...p, state: "cancelled", to: p.from, message: "Cancelled before dispatch" }
+          : p
+      )
+    );
+  };
+
   const bulkAction = async (action: "start" | "stop" | "reboot") => {
     const targets = action === "start" ? canStart : action === "stop" ? canStop : canReboot;
     if (targets.length === 0) return;
+    cancelRef.current = false;
+    setCancelRequested(false);
     setBulkBusy(true);
     const transient = action === "start" ? "starting" : action === "stop" ? "stopping" : "rebooting";
     const finalOk = action === "stop" ? "stopped" : "running";
@@ -166,9 +184,21 @@ const Compute = () => {
       .update({ status: transient } as never)
       .in("id", targets.map((v) => v.id));
     fetchVMs();
-    let ok = 0, fail = 0;
+    let ok = 0, fail = 0, cancelled = 0;
     await Promise.all(
       targets.map(async (vm) => {
+        // Cancelled before we could dispatch → revert DB status, mark cancelled
+        if (cancelRef.current) {
+          await supabase
+            .from("virtual_machines")
+            .update({ status: vm.status } as never)
+            .eq("id", vm.id);
+          setBulkProgress((prev) => prev.map((p) => p.id === vm.id ? {
+            ...p, state: "cancelled", to: vm.status, message: "Cancelled before dispatch",
+          } : p));
+          cancelled++;
+          return;
+        }
         const t0 = performance.now();
         setBulkProgress((prev) => prev.map((p) => p.id === vm.id ? { ...p, state: "running" } : p));
         const result = await provision({
@@ -179,6 +209,22 @@ const Compute = () => {
           payload: { provider_resource_id: vm.provider_resource_id ?? "" },
         });
         const ms = Math.round(performance.now() - t0);
+        // If cancelled mid-flight: keep the actual result but tag as cancelled if it failed;
+        // successful ops still commit (we can't un-start a running VM). Failed ops get the
+        // original status back rather than 'failed'.
+        if (cancelRef.current && !result.ok) {
+          await supabase
+            .from("virtual_machines")
+            .update({ status: vm.status } as never)
+            .eq("id", vm.id);
+          setBulkProgress((prev) => prev.map((p) => p.id === vm.id ? {
+            ...p, state: "cancelled", to: vm.status,
+            message: `Cancelled — provider call did not complete (${result.message ?? "no response"})`,
+            ms,
+          } : p));
+          cancelled++;
+          return;
+        }
         await supabase
           .from("virtual_machines")
           .update({ status: result.ok ? finalOk : "failed" } as never)
@@ -187,7 +233,9 @@ const Compute = () => {
           ...p,
           state: result.ok ? "success" : "error",
           to: result.ok ? finalOk : "failed",
-          message: result.ok ? undefined : (result.message ?? "Provider returned an error"),
+          message: result.ok
+            ? (cancelRef.current ? "Completed before cancellation took effect" : undefined)
+            : (result.message ?? "Provider returned an error"),
           ms,
         } : p));
         result.ok ? ok++ : fail++;
@@ -197,8 +245,13 @@ const Compute = () => {
     setSelected(new Set());
     fetchVMs();
     const verb = action === "reboot" ? "rebooted" : `${action}ed`;
-    if (fail === 0) toast.success(`${ok} instance${ok === 1 ? "" : "s"} ${verb}`);
-    else toast.error(`${ok} succeeded, ${fail} failed — see progress panel`);
+    if (cancelled > 0) {
+      toast.warning(`Cancelled — ${ok} ${verb}, ${fail} failed, ${cancelled} cancelled`);
+    } else if (fail === 0) {
+      toast.success(`${ok} instance${ok === 1 ? "" : "s"} ${verb}`);
+    } else {
+      toast.error(`${ok} succeeded, ${fail} failed — see progress panel`);
+    }
   };
 
   useEffect(() => {
@@ -658,9 +711,10 @@ const Compute = () => {
           </div>
 
           {bulkProgress.length > 0 && (() => {
-            const done = bulkProgress.filter((p) => p.state === "success" || p.state === "error").length;
+            const done = bulkProgress.filter((p) => p.state === "success" || p.state === "error" || p.state === "cancelled").length;
             const okCount = bulkProgress.filter((p) => p.state === "success").length;
             const errCount = bulkProgress.filter((p) => p.state === "error").length;
+            const cxlCount = bulkProgress.filter((p) => p.state === "cancelled").length;
             const pct = Math.round((done / bulkProgress.length) * 100);
             return (
               <Card className="mb-4 border-primary/30">
@@ -668,18 +722,34 @@ const Compute = () => {
                   <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
                     <div className="flex items-center gap-2">
                       {bulkBusy ? <RefreshCw className="h-4 w-4 text-primary animate-spin" /> : <Server className="h-4 w-4 text-primary" />}
-                      <div className="font-heading text-sm font-semibold text-foreground">{bulkLabel}</div>
+                      <div className="font-heading text-sm font-semibold text-foreground">
+                        {bulkLabel}{cancelRequested && bulkBusy ? " · cancelling…" : ""}
+                      </div>
                       <span className="text-xs text-muted-foreground">
-                        {done}/{bulkProgress.length} · {okCount} ok{errCount ? ` · ${errCount} failed` : ""}
+                        {done}/{bulkProgress.length} · {okCount} ok
+                        {errCount ? ` · ${errCount} failed` : ""}
+                        {cxlCount ? ` · ${cxlCount} cancelled` : ""}
                       </span>
                     </div>
-                    {!bulkBusy && (
-                      <Button size="sm" variant="ghost" onClick={() => setBulkProgress([])}>Dismiss</Button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {bulkBusy && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={requestBulkCancel}
+                          disabled={cancelRequested}
+                        >
+                          {cancelRequested ? "Cancelling…" : "Cancel"}
+                        </Button>
+                      )}
+                      {!bulkBusy && (
+                        <Button size="sm" variant="ghost" onClick={() => setBulkProgress([])}>Dismiss</Button>
+                      )}
+                    </div>
                   </div>
                   <div className="h-1.5 rounded-full bg-secondary overflow-hidden mb-3">
                     <div
-                      className={`h-full transition-all ${errCount > 0 && !bulkBusy ? "bg-destructive" : "bg-primary"}`}
+                      className={`h-full transition-all ${errCount > 0 && !bulkBusy ? "bg-destructive" : cxlCount > 0 && !bulkBusy ? "bg-amber-400" : "bg-primary"}`}
                       style={{ width: `${pct}%` }}
                     />
                   </div>
@@ -691,6 +761,7 @@ const Compute = () => {
                           {p.state === "running" && <RefreshCw className="h-3 w-3 text-amber-400 animate-spin" />}
                           {p.state === "success" && <div className="h-2 w-2 rounded-full bg-green-400 mx-auto" />}
                           {p.state === "error" && <div className="h-2 w-2 rounded-full bg-destructive mx-auto" />}
+                          {p.state === "cancelled" && <div className="h-2 w-2 rounded-full bg-amber-400 mx-auto" />}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
@@ -698,10 +769,15 @@ const Compute = () => {
                             <span className="text-muted-foreground capitalize">
                               {p.from}{p.to ? ` → ${p.to}` : ""}
                             </span>
+                            {p.state === "cancelled" && (
+                              <span className="text-amber-400 uppercase text-[10px] tracking-wide">Cancelled</span>
+                            )}
                             {p.ms != null && <span className="text-muted-foreground">· {p.ms}ms</span>}
                           </div>
                           {p.message && (
-                            <div className="text-destructive mt-0.5 break-words">{p.message}</div>
+                            <div className={`mt-0.5 break-words ${p.state === "cancelled" ? "text-amber-400" : "text-destructive"}`}>
+                              {p.message}
+                            </div>
                           )}
                         </div>
                       </div>
