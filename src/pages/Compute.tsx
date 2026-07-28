@@ -135,12 +135,13 @@ const Compute = () => {
   const selectedVms = vms.filter((v) => selected.has(v.id));
   const canStart = selectedVms.filter((v) => v.status === "stopped");
   const canStop = selectedVms.filter((v) => v.status === "running");
+  const canReboot = selectedVms.filter((v) => v.status === "running" || v.status === "stopped");
 
-  const bulkAction = async (action: "start" | "stop") => {
-    const targets = action === "start" ? canStart : canStop;
+  const bulkAction = async (action: "start" | "stop" | "reboot") => {
+    const targets = action === "start" ? canStart : action === "stop" ? canStop : canReboot;
     if (targets.length === 0) return;
     setBulkBusy(true);
-    const transient = action === "start" ? "starting" : "stopping";
+    const transient = action === "start" ? "starting" : action === "stop" ? "stopping" : "rebooting";
     await supabase
       .from("virtual_machines")
       .update({ status: transient } as never)
@@ -159,7 +160,7 @@ const Compute = () => {
         await supabase
           .from("virtual_machines")
           .update({
-            status: result.ok ? (action === "start" ? "running" : "stopped") : vm.status,
+            status: result.ok ? (action === "stop" ? "stopped" : "running") : vm.status,
           } as never)
           .eq("id", vm.id);
         result.ok ? ok++ : fail++;
@@ -168,7 +169,8 @@ const Compute = () => {
     setBulkBusy(false);
     setSelected(new Set());
     fetchVMs();
-    if (fail === 0) toast.success(`${ok} instance${ok === 1 ? "" : "s"} ${action}ed`);
+    const verb = action === "reboot" ? "rebooted" : `${action}ed`;
+    if (fail === 0) toast.success(`${ok} instance${ok === 1 ? "" : "s"} ${verb}`);
     else toast.error(`${ok} succeeded, ${fail} failed`);
   };
 
