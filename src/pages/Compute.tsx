@@ -130,7 +130,7 @@ const Compute = () => {
     id: string;
     name: string;
     action: "start" | "stop" | "reboot";
-    state: "pending" | "running" | "success" | "error";
+    state: "pending" | "running" | "success" | "error" | "cancelled";
     from: string;
     to?: string;
     message?: string;
@@ -138,6 +138,8 @@ const Compute = () => {
   };
   const [bulkProgress, setBulkProgress] = useState<BulkItem[]>([]);
   const [bulkLabel, setBulkLabel] = useState<string>("");
+  const cancelRef = useRef(false);
+  const [cancelRequested, setCancelRequested] = useState(false);
   const toggleSelected = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -149,9 +151,25 @@ const Compute = () => {
   const canStop = selectedVms.filter((v) => v.status === "running");
   const canReboot = selectedVms.filter((v) => v.status === "running" || v.status === "stopped");
 
+  const requestBulkCancel = () => {
+    if (!bulkBusy) return;
+    cancelRef.current = true;
+    setCancelRequested(true);
+    // Immediately mark any pending (not-yet-started) items as cancelled
+    setBulkProgress((prev) =>
+      prev.map((p) =>
+        p.state === "pending"
+          ? { ...p, state: "cancelled", to: p.from, message: "Cancelled before dispatch" }
+          : p
+      )
+    );
+  };
+
   const bulkAction = async (action: "start" | "stop" | "reboot") => {
     const targets = action === "start" ? canStart : action === "stop" ? canStop : canReboot;
     if (targets.length === 0) return;
+    cancelRef.current = false;
+    setCancelRequested(false);
     setBulkBusy(true);
     const transient = action === "start" ? "starting" : action === "stop" ? "stopping" : "rebooting";
     const finalOk = action === "stop" ? "stopped" : "running";
@@ -166,9 +184,21 @@ const Compute = () => {
       .update({ status: transient } as never)
       .in("id", targets.map((v) => v.id));
     fetchVMs();
-    let ok = 0, fail = 0;
+    let ok = 0, fail = 0, cancelled = 0;
     await Promise.all(
       targets.map(async (vm) => {
+        // Cancelled before we could dispatch → revert DB status, mark cancelled
+        if (cancelRef.current) {
+          await supabase
+            .from("virtual_machines")
+            .update({ status: vm.status } as never)
+            .eq("id", vm.id);
+          setBulkProgress((prev) => prev.map((p) => p.id === vm.id ? {
+            ...p, state: "cancelled", to: vm.status, message: "Cancelled before dispatch",
+          } : p));
+          cancelled++;
+          return;
+        }
         const t0 = performance.now();
         setBulkProgress((prev) => prev.map((p) => p.id === vm.id ? { ...p, state: "running" } : p));
         const result = await provision({
@@ -179,6 +209,22 @@ const Compute = () => {
           payload: { provider_resource_id: vm.provider_resource_id ?? "" },
         });
         const ms = Math.round(performance.now() - t0);
+        // If cancelled mid-flight: keep the actual result but tag as cancelled if it failed;
+        // successful ops still commit (we can't un-start a running VM). Failed ops get the
+        // original status back rather than 'failed'.
+        if (cancelRef.current && !result.ok) {
+          await supabase
+            .from("virtual_machines")
+            .update({ status: vm.status } as never)
+            .eq("id", vm.id);
+          setBulkProgress((prev) => prev.map((p) => p.id === vm.id ? {
+            ...p, state: "cancelled", to: vm.status,
+            message: `Cancelled — provider call did not complete (${result.message ?? "no response"})`,
+            ms,
+          } : p));
+          cancelled++;
+          return;
+        }
         await supabase
           .from("virtual_machines")
           .update({ status: result.ok ? finalOk : "failed" } as never)
@@ -187,7 +233,9 @@ const Compute = () => {
           ...p,
           state: result.ok ? "success" : "error",
           to: result.ok ? finalOk : "failed",
-          message: result.ok ? undefined : (result.message ?? "Provider returned an error"),
+          message: result.ok
+            ? (cancelRef.current ? "Completed before cancellation took effect" : undefined)
+            : (result.message ?? "Provider returned an error"),
           ms,
         } : p));
         result.ok ? ok++ : fail++;
@@ -197,8 +245,13 @@ const Compute = () => {
     setSelected(new Set());
     fetchVMs();
     const verb = action === "reboot" ? "rebooted" : `${action}ed`;
-    if (fail === 0) toast.success(`${ok} instance${ok === 1 ? "" : "s"} ${verb}`);
-    else toast.error(`${ok} succeeded, ${fail} failed — see progress panel`);
+    if (cancelled > 0) {
+      toast.warning(`Cancelled — ${ok} ${verb}, ${fail} failed, ${cancelled} cancelled`);
+    } else if (fail === 0) {
+      toast.success(`${ok} instance${ok === 1 ? "" : "s"} ${verb}`);
+    } else {
+      toast.error(`${ok} succeeded, ${fail} failed — see progress panel`);
+    }
   };
 
   useEffect(() => {
