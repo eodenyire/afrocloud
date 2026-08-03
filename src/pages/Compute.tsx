@@ -732,16 +732,34 @@ const Compute = () => {
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      {bulkBusy && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={requestBulkCancel}
-                          disabled={cancelRequested}
-                        >
-                          {cancelRequested ? "Cancelling…" : "Cancel"}
-                        </Button>
-                      )}
+                      {bulkBusy && (() => {
+                        const runningCount = bulkProgress.filter((p) => p.state === "running").length;
+                        const pendingCount = bulkProgress.filter((p) => p.state === "pending").length;
+                        return (
+                          <ConfirmDialog
+                            title="Cancel bulk operation?"
+                            description={
+                              <div className="space-y-1">
+                                <div>
+                                  {runningCount} instance{runningCount === 1 ? " is" : "s are"} already in progress and will be allowed to finish.
+                                </div>
+                                <div>
+                                  {pendingCount} instance{pendingCount === 1 ? " has" : "s have"} not started yet and will be cancelled.
+                                </div>
+                              </div>
+                            }
+                            confirmLabel="Cancel pending"
+                            cancelLabel="Keep running"
+                            destructive={false}
+                            onConfirm={requestBulkCancel}
+                            trigger={
+                              <Button size="sm" variant="outline" disabled={cancelRequested}>
+                                {cancelRequested ? "Cancelling…" : "Cancel"}
+                              </Button>
+                            }
+                          />
+                        );
+                      })()}
                       {!bulkBusy && (
                         <Button size="sm" variant="ghost" onClick={() => setBulkProgress([])}>Dismiss</Button>
                       )}
