@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import {
   Cloud, Server, Plus, Power, PowerOff, Trash2,
   Cpu, HardDrive, MemoryStick, Globe, Monitor, RefreshCw, Terminal,
-  RotateCw, Camera, Copy as CopyIcon, Undo2,
+  RotateCw, Camera, Copy as CopyIcon, Undo2, ScrollText,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
