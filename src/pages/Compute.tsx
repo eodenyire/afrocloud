@@ -1114,6 +1114,80 @@ const Compute = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Bulk operations audit log */}
+      <Dialog open={showAudit} onOpenChange={setShowAudit}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Bulk operations audit log</DialogTitle>
+            <DialogDescription>
+              Who triggered each bulk action, when it ran, which instances were selected, and the final outcome per instance.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-auto space-y-3">
+            {auditLoading && <p className="text-xs text-muted-foreground">Loading…</p>}
+            {!auditLoading && auditRows.length === 0 && (
+              <p className="text-xs text-muted-foreground">No bulk operations recorded yet.</p>
+            )}
+            {auditRows.map((row) => {
+              const items = row.response?.items ?? [];
+              const s = row.response?.summary;
+              return (
+                <div key={row.id} className="border border-border rounded-md p-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="text-sm font-medium text-foreground">
+                      {row.request?.label ?? row.action}
+                      {row.request?.retry_of ? " (retry)" : ""}
+                    </div>
+                    <span
+                      className={`text-[10px] uppercase tracking-wide ${
+                        row.status === "success" ? "text-green-400" : row.status === "failed" ? "text-destructive" : "text-amber-400"
+                      }`}
+                    >
+                      {row.status}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {row.request?.actor ?? "unknown"} · {new Date(row.started_at).toLocaleString()}
+                    {s ? ` · ${s.ok} ok, ${s.failed} failed, ${s.cancelled} cancelled` : ""}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-1 break-all">
+                    Selected IDs: {(row.request?.vm_ids ?? []).join(", ") || "—"}
+                  </p>
+                  <div className="mt-2 space-y-1">
+                    {items.map((it) => (
+                      <div key={it.id} className="text-[11px] flex items-start gap-2">
+                        <span
+                          className={
+                            it.state === "success" ? "text-green-400"
+                              : it.state === "error" ? "text-destructive"
+                              : "text-amber-400"
+                          }
+                        >
+                          ●
+                        </span>
+                        <span className="text-foreground">{it.name}</span>
+                        <span className="text-muted-foreground capitalize">
+                          {it.from} → {it.to}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {it.state}
+                          {it.state === "cancelled" && it.cancelReason
+                            ? ` (${it.cancelReason === "in-flight" ? "mid-flight" : "while pending"})`
+                            : ""}
+                          {it.ms != null ? ` · ${it.ms}ms` : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowAudit(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ConsoleLayout>
   );
 };
