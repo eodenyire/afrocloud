@@ -904,9 +904,6 @@ const Compute = () => {
                               {p.message}
                             </div>
                           )}
-                              {p.message}
-                            </div>
-                          )}
                         </div>
                       </div>
                     ))}
