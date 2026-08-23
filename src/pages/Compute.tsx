@@ -135,11 +135,40 @@ const Compute = () => {
     to?: string;
     message?: string;
     ms?: number;
+    cancelReason?: "pending" | "in-flight";
   };
   const [bulkProgress, setBulkProgress] = useState<BulkItem[]>([]);
   const [bulkLabel, setBulkLabel] = useState<string>("");
+  const [lastBulkAction, setLastBulkAction] = useState<"start" | "stop" | "reboot" | null>(null);
   const cancelRef = useRef(false);
   const [cancelRequested, setCancelRequested] = useState(false);
+  type AuditEntry = {
+    id: string;
+    action: string;
+    status: string;
+    started_at: string;
+    completed_at: string | null;
+    request: { actor?: string; vm_ids?: string[]; label?: string; retry_of?: string } | null;
+    response: { items?: BulkItem[]; summary?: { ok: number; failed: number; cancelled: number } } | null;
+  };
+  const [showAudit, setShowAudit] = useState(false);
+  const [auditRows, setAuditRows] = useState<AuditEntry[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+
+  const fetchAudit = async () => {
+    if (!user) return;
+    setAuditLoading(true);
+    const { data } = await supabase
+      .from("resource_operations")
+      .select("id, action, status, started_at, completed_at, request, response")
+      .eq("user_id", user.id)
+      .eq("resource_type", "compute_bulk")
+      .order("started_at", { ascending: false })
+      .limit(50);
+    setAuditRows((data as unknown as AuditEntry[]) ?? []);
+    setAuditLoading(false);
+  };
+
   const toggleSelected = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -150,6 +179,7 @@ const Compute = () => {
   const canStart = selectedVms.filter((v) => v.status === "stopped");
   const canStop = selectedVms.filter((v) => v.status === "running");
   const canReboot = selectedVms.filter((v) => v.status === "running" || v.status === "stopped");
+  const failedItems = bulkProgress.filter((p) => p.state === "error");
 
   const requestBulkCancel = () => {
     if (!bulkBusy) return;
@@ -159,24 +189,37 @@ const Compute = () => {
     setBulkProgress((prev) =>
       prev.map((p) =>
         p.state === "pending"
-          ? { ...p, state: "cancelled", to: p.from, message: "Cancelled before dispatch" }
+          ? {
+              ...p,
+              state: "cancelled",
+              to: p.from,
+              cancelReason: "pending",
+              message: "Cancelled while pending — the provider call was never dispatched",
+            }
           : p
       )
     );
   };
 
-  const bulkAction = async (action: "start" | "stop" | "reboot") => {
-    const targets = action === "start" ? canStart : action === "stop" ? canStop : canReboot;
+  const bulkAction = async (
+    action: "start" | "stop" | "reboot",
+    override?: VM[],
+    retryOf?: string
+  ) => {
+    const targets = override ?? (action === "start" ? canStart : action === "stop" ? canStop : canReboot);
     if (targets.length === 0) return;
     cancelRef.current = false;
     setCancelRequested(false);
     setBulkBusy(true);
+    setLastBulkAction(action);
+    const startedAt = new Date().toISOString();
     const transient = action === "start" ? "starting" : action === "stop" ? "stopping" : "rebooting";
     const finalOk = action === "stop" ? "stopped" : "running";
-    setBulkLabel(`${action[0].toUpperCase() + action.slice(1)} ${targets.length} instance${targets.length === 1 ? "" : "s"}`);
+    const label = `${retryOf ? "Retry · " : ""}${action[0].toUpperCase() + action.slice(1)} ${targets.length} instance${targets.length === 1 ? "" : "s"}`;
+    setBulkLabel(label);
     setBulkProgress(
       targets.map((v) => ({
-        id: v.id, name: v.name, action, state: "pending", from: v.status, to: transient,
+        id: v.id, name: v.name, action, state: "pending" as const, from: v.status, to: transient,
       }))
     );
     await supabase
@@ -185,17 +228,22 @@ const Compute = () => {
       .in("id", targets.map((v) => v.id));
     fetchVMs();
     let ok = 0, fail = 0, cancelled = 0;
+    const results: BulkItem[] = [];
     await Promise.all(
       targets.map(async (vm) => {
+        const base: BulkItem = { id: vm.id, name: vm.name, action, state: "pending", from: vm.status, to: transient };
         // Cancelled before we could dispatch → revert DB status, mark cancelled
         if (cancelRef.current) {
           await supabase
             .from("virtual_machines")
             .update({ status: vm.status } as never)
             .eq("id", vm.id);
-          setBulkProgress((prev) => prev.map((p) => p.id === vm.id ? {
-            ...p, state: "cancelled", to: vm.status, message: "Cancelled before dispatch",
-          } : p));
+          const item: BulkItem = {
+            ...base, state: "cancelled", to: vm.status, cancelReason: "pending",
+            message: "Cancelled while pending — the provider call was never dispatched",
+          };
+          results.push(item);
+          setBulkProgress((prev) => prev.map((p) => p.id === vm.id ? item : p));
           cancelled++;
           return;
         }
@@ -217,11 +265,13 @@ const Compute = () => {
             .from("virtual_machines")
             .update({ status: vm.status } as never)
             .eq("id", vm.id);
-          setBulkProgress((prev) => prev.map((p) => p.id === vm.id ? {
-            ...p, state: "cancelled", to: vm.status,
-            message: `Cancelled — provider call did not complete (${result.message ?? "no response"})`,
+          const item: BulkItem = {
+            ...base, state: "cancelled", to: vm.status, cancelReason: "in-flight",
+            message: `Cancelled mid-flight — the provider call was already dispatched but did not complete (${result.message ?? "no response"})`,
             ms,
-          } : p));
+          };
+          results.push(item);
+          setBulkProgress((prev) => prev.map((p) => p.id === vm.id ? item : p));
           cancelled++;
           return;
         }
@@ -229,21 +279,47 @@ const Compute = () => {
           .from("virtual_machines")
           .update({ status: result.ok ? finalOk : "failed" } as never)
           .eq("id", vm.id);
-        setBulkProgress((prev) => prev.map((p) => p.id === vm.id ? {
-          ...p,
+        const item: BulkItem = {
+          ...base,
           state: result.ok ? "success" : "error",
           to: result.ok ? finalOk : "failed",
           message: result.ok
             ? (cancelRef.current ? "Completed before cancellation took effect" : undefined)
             : (result.message ?? "Provider returned an error"),
           ms,
-        } : p));
+        };
+        results.push(item);
+        setBulkProgress((prev) => prev.map((p) => p.id === vm.id ? item : p));
         result.ok ? ok++ : fail++;
       })
     );
     setBulkBusy(false);
+    setCancelRequested(false);
     setSelected(new Set());
     fetchVMs();
+
+    // Audit trail
+    if (user) {
+      await supabase.from("resource_operations").insert({
+        user_id: user.id,
+        resource_type: "compute_bulk",
+        provider: targets[0]?.provider ?? "native",
+        action: `bulk.${action}`,
+        status: cancelled > 0 ? "cancelled" : fail > 0 ? "failed" : "success",
+        started_at: startedAt,
+        completed_at: new Date().toISOString(),
+        request: {
+          actor: user.email ?? user.id,
+          actor_id: user.id,
+          label,
+          vm_ids: targets.map((v) => v.id),
+          ...(retryOf ? { retry_of: retryOf } : {}),
+        },
+        response: { items: results, summary: { ok, failed: fail, cancelled } },
+      } as never);
+      if (showAudit) fetchAudit();
+    }
+
     const verb = action === "reboot" ? "rebooted" : `${action}ed`;
     if (cancelled > 0) {
       toast.warning(`Cancelled — ${ok} ${verb}, ${fail} failed, ${cancelled} cancelled`);
@@ -252,6 +328,15 @@ const Compute = () => {
     } else {
       toast.error(`${ok} succeeded, ${fail} failed — see progress panel`);
     }
+  };
+
+  const retryFailed = async () => {
+    const ids = new Set(failedItems.map((p) => p.id));
+    const action = lastBulkAction ?? failedItems[0]?.action;
+    if (!action || ids.size === 0) return;
+    const targets = vms.filter((v) => ids.has(v.id));
+    if (targets.length === 0) return;
+    await bulkAction(action, targets, "previous-bulk");
   };
 
   useEffect(() => {
