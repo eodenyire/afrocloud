@@ -578,9 +578,19 @@ const Compute = () => {
     <ConsoleLayout
       title="Compute"
       actions={
-        <Button size="sm" onClick={() => setShowCreate(true)} className="gap-2">
-          <Plus className="h-4 w-4" /> Launch Instance
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-2"
+            onClick={() => { setShowAudit(true); fetchAudit(); }}
+          >
+            <ScrollText className="h-4 w-4" /> Bulk audit log
+          </Button>
+          <Button size="sm" onClick={() => setShowCreate(true)} className="gap-2">
+            <Plus className="h-4 w-4" /> Launch Instance
+          </Button>
+        </div>
       }
     >
       <div className="max-w-6xl mx-auto px-6 py-8">
