@@ -845,11 +845,31 @@ const Compute = () => {
                           />
                         );
                       })()}
+                      {!bulkBusy && failedItems.length > 0 && (
+                        <ConfirmDialog
+                          title={`Retry ${failedItems.length} failed instance${failedItems.length === 1 ? "" : "s"}?`}
+                          description={`Only the instances that errored will be retried: ${failedItems.map((p) => p.name).join(", ")}.`}
+                          confirmLabel={`Retry ${failedItems.length}`}
+                          destructive={false}
+                          onConfirm={retryFailed}
+                          trigger={
+                            <Button size="sm" variant="outline" className="gap-1.5">
+                              <RotateCw className="h-3.5 w-3.5" /> Retry failed
+                            </Button>
+                          }
+                        />
+                      )}
                       {!bulkBusy && (
                         <Button size="sm" variant="ghost" onClick={() => setBulkProgress([])}>Dismiss</Button>
                       )}
                     </div>
                   </div>
+                  {cancelRequested && bulkBusy && (
+                    <div className="mb-3 rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs text-amber-400 flex items-center gap-2">
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      Cancellation in progress — pending instances have been halted, in-flight calls are finishing.
+                    </div>
+                  )}
                   <div className="h-1.5 rounded-full bg-secondary overflow-hidden mb-3">
                     <div
                       className={`h-full transition-all ${errCount > 0 && !bulkBusy ? "bg-destructive" : cxlCount > 0 && !bulkBusy ? "bg-amber-400" : "bg-primary"}`}
@@ -873,12 +893,17 @@ const Compute = () => {
                               {p.from}{p.to ? ` → ${p.to}` : ""}
                             </span>
                             {p.state === "cancelled" && (
-                              <span className="text-amber-400 uppercase text-[10px] tracking-wide">Cancelled</span>
+                              <span className="text-amber-400 uppercase text-[10px] tracking-wide">
+                                Cancelled {p.cancelReason === "in-flight" ? "· mid-flight" : "· while pending"}
+                              </span>
                             )}
                             {p.ms != null && <span className="text-muted-foreground">· {p.ms}ms</span>}
                           </div>
                           {p.message && (
                             <div className={`mt-0.5 break-words ${p.state === "cancelled" ? "text-amber-400" : "text-destructive"}`}>
+                              {p.message}
+                            </div>
+                          )}
                               {p.message}
                             </div>
                           )}
