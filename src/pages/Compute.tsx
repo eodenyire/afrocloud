@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import {
   Cloud, Server, Plus, Power, PowerOff, Trash2,
   Cpu, HardDrive, MemoryStick, Globe, Monitor, RefreshCw, Terminal,
-  RotateCw, Camera, Copy as CopyIcon, Undo2,
+  RotateCw, Camera, Copy as CopyIcon, Undo2, ScrollText,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -135,11 +135,40 @@ const Compute = () => {
     to?: string;
     message?: string;
     ms?: number;
+    cancelReason?: "pending" | "in-flight";
   };
   const [bulkProgress, setBulkProgress] = useState<BulkItem[]>([]);
   const [bulkLabel, setBulkLabel] = useState<string>("");
+  const [lastBulkAction, setLastBulkAction] = useState<"start" | "stop" | "reboot" | null>(null);
   const cancelRef = useRef(false);
   const [cancelRequested, setCancelRequested] = useState(false);
+  type AuditEntry = {
+    id: string;
+    action: string;
+    status: string;
+    started_at: string;
+    completed_at: string | null;
+    request: { actor?: string; vm_ids?: string[]; label?: string; retry_of?: string } | null;
+    response: { items?: BulkItem[]; summary?: { ok: number; failed: number; cancelled: number } } | null;
+  };
+  const [showAudit, setShowAudit] = useState(false);
+  const [auditRows, setAuditRows] = useState<AuditEntry[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+
+  const fetchAudit = async () => {
+    if (!user) return;
+    setAuditLoading(true);
+    const { data } = await supabase
+      .from("resource_operations")
+      .select("id, action, status, started_at, completed_at, request, response")
+      .eq("user_id", user.id)
+      .eq("resource_type", "compute_bulk")
+      .order("started_at", { ascending: false })
+      .limit(50);
+    setAuditRows((data as unknown as AuditEntry[]) ?? []);
+    setAuditLoading(false);
+  };
+
   const toggleSelected = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -150,6 +179,7 @@ const Compute = () => {
   const canStart = selectedVms.filter((v) => v.status === "stopped");
   const canStop = selectedVms.filter((v) => v.status === "running");
   const canReboot = selectedVms.filter((v) => v.status === "running" || v.status === "stopped");
+  const failedItems = bulkProgress.filter((p) => p.state === "error");
 
   const requestBulkCancel = () => {
     if (!bulkBusy) return;
@@ -159,24 +189,37 @@ const Compute = () => {
     setBulkProgress((prev) =>
       prev.map((p) =>
         p.state === "pending"
-          ? { ...p, state: "cancelled", to: p.from, message: "Cancelled before dispatch" }
+          ? {
+              ...p,
+              state: "cancelled",
+              to: p.from,
+              cancelReason: "pending",
+              message: "Cancelled while pending — the provider call was never dispatched",
+            }
           : p
       )
     );
   };
 
-  const bulkAction = async (action: "start" | "stop" | "reboot") => {
-    const targets = action === "start" ? canStart : action === "stop" ? canStop : canReboot;
+  const bulkAction = async (
+    action: "start" | "stop" | "reboot",
+    override?: VM[],
+    retryOf?: string
+  ) => {
+    const targets = override ?? (action === "start" ? canStart : action === "stop" ? canStop : canReboot);
     if (targets.length === 0) return;
     cancelRef.current = false;
     setCancelRequested(false);
     setBulkBusy(true);
+    setLastBulkAction(action);
+    const startedAt = new Date().toISOString();
     const transient = action === "start" ? "starting" : action === "stop" ? "stopping" : "rebooting";
     const finalOk = action === "stop" ? "stopped" : "running";
-    setBulkLabel(`${action[0].toUpperCase() + action.slice(1)} ${targets.length} instance${targets.length === 1 ? "" : "s"}`);
+    const label = `${retryOf ? "Retry · " : ""}${action[0].toUpperCase() + action.slice(1)} ${targets.length} instance${targets.length === 1 ? "" : "s"}`;
+    setBulkLabel(label);
     setBulkProgress(
       targets.map((v) => ({
-        id: v.id, name: v.name, action, state: "pending", from: v.status, to: transient,
+        id: v.id, name: v.name, action, state: "pending" as const, from: v.status, to: transient,
       }))
     );
     await supabase
@@ -185,17 +228,22 @@ const Compute = () => {
       .in("id", targets.map((v) => v.id));
     fetchVMs();
     let ok = 0, fail = 0, cancelled = 0;
+    const results: BulkItem[] = [];
     await Promise.all(
       targets.map(async (vm) => {
+        const base: BulkItem = { id: vm.id, name: vm.name, action, state: "pending", from: vm.status, to: transient };
         // Cancelled before we could dispatch → revert DB status, mark cancelled
         if (cancelRef.current) {
           await supabase
             .from("virtual_machines")
             .update({ status: vm.status } as never)
             .eq("id", vm.id);
-          setBulkProgress((prev) => prev.map((p) => p.id === vm.id ? {
-            ...p, state: "cancelled", to: vm.status, message: "Cancelled before dispatch",
-          } : p));
+          const item: BulkItem = {
+            ...base, state: "cancelled", to: vm.status, cancelReason: "pending",
+            message: "Cancelled while pending — the provider call was never dispatched",
+          };
+          results.push(item);
+          setBulkProgress((prev) => prev.map((p) => p.id === vm.id ? item : p));
           cancelled++;
           return;
         }
@@ -217,11 +265,13 @@ const Compute = () => {
             .from("virtual_machines")
             .update({ status: vm.status } as never)
             .eq("id", vm.id);
-          setBulkProgress((prev) => prev.map((p) => p.id === vm.id ? {
-            ...p, state: "cancelled", to: vm.status,
-            message: `Cancelled — provider call did not complete (${result.message ?? "no response"})`,
+          const item: BulkItem = {
+            ...base, state: "cancelled", to: vm.status, cancelReason: "in-flight",
+            message: `Cancelled mid-flight — the provider call was already dispatched but did not complete (${result.message ?? "no response"})`,
             ms,
-          } : p));
+          };
+          results.push(item);
+          setBulkProgress((prev) => prev.map((p) => p.id === vm.id ? item : p));
           cancelled++;
           return;
         }
@@ -229,21 +279,47 @@ const Compute = () => {
           .from("virtual_machines")
           .update({ status: result.ok ? finalOk : "failed" } as never)
           .eq("id", vm.id);
-        setBulkProgress((prev) => prev.map((p) => p.id === vm.id ? {
-          ...p,
+        const item: BulkItem = {
+          ...base,
           state: result.ok ? "success" : "error",
           to: result.ok ? finalOk : "failed",
           message: result.ok
             ? (cancelRef.current ? "Completed before cancellation took effect" : undefined)
             : (result.message ?? "Provider returned an error"),
           ms,
-        } : p));
+        };
+        results.push(item);
+        setBulkProgress((prev) => prev.map((p) => p.id === vm.id ? item : p));
         result.ok ? ok++ : fail++;
       })
     );
     setBulkBusy(false);
+    setCancelRequested(false);
     setSelected(new Set());
     fetchVMs();
+
+    // Audit trail
+    if (user) {
+      await supabase.from("resource_operations").insert({
+        user_id: user.id,
+        resource_type: "compute_bulk",
+        provider: targets[0]?.provider ?? "native",
+        action: `bulk.${action}`,
+        status: cancelled > 0 ? "cancelled" : fail > 0 ? "failed" : "success",
+        started_at: startedAt,
+        completed_at: new Date().toISOString(),
+        request: {
+          actor: user.email ?? user.id,
+          actor_id: user.id,
+          label,
+          vm_ids: targets.map((v) => v.id),
+          ...(retryOf ? { retry_of: retryOf } : {}),
+        },
+        response: { items: results, summary: { ok, failed: fail, cancelled } },
+      } as never);
+      if (showAudit) fetchAudit();
+    }
+
     const verb = action === "reboot" ? "rebooted" : `${action}ed`;
     if (cancelled > 0) {
       toast.warning(`Cancelled — ${ok} ${verb}, ${fail} failed, ${cancelled} cancelled`);
@@ -252,6 +328,15 @@ const Compute = () => {
     } else {
       toast.error(`${ok} succeeded, ${fail} failed — see progress panel`);
     }
+  };
+
+  const retryFailed = async () => {
+    const ids = new Set(failedItems.map((p) => p.id));
+    const action = lastBulkAction ?? failedItems[0]?.action;
+    if (!action || ids.size === 0) return;
+    const targets = vms.filter((v) => ids.has(v.id));
+    if (targets.length === 0) return;
+    await bulkAction(action, targets, "previous-bulk");
   };
 
   useEffect(() => {
@@ -493,9 +578,19 @@ const Compute = () => {
     <ConsoleLayout
       title="Compute"
       actions={
-        <Button size="sm" onClick={() => setShowCreate(true)} className="gap-2">
-          <Plus className="h-4 w-4" /> Launch Instance
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-2"
+            onClick={() => { setShowAudit(true); fetchAudit(); }}
+          >
+            <ScrollText className="h-4 w-4" /> Bulk audit log
+          </Button>
+          <Button size="sm" onClick={() => setShowCreate(true)} className="gap-2">
+            <Plus className="h-4 w-4" /> Launch Instance
+          </Button>
+        </div>
       }
     >
       <div className="max-w-6xl mx-auto px-6 py-8">
@@ -760,11 +855,31 @@ const Compute = () => {
                           />
                         );
                       })()}
+                      {!bulkBusy && failedItems.length > 0 && (
+                        <ConfirmDialog
+                          title={`Retry ${failedItems.length} failed instance${failedItems.length === 1 ? "" : "s"}?`}
+                          description={`Only the instances that errored will be retried: ${failedItems.map((p) => p.name).join(", ")}.`}
+                          confirmLabel={`Retry ${failedItems.length}`}
+                          destructive={false}
+                          onConfirm={retryFailed}
+                          trigger={
+                            <Button size="sm" variant="outline" className="gap-1.5">
+                              <RotateCw className="h-3.5 w-3.5" /> Retry failed
+                            </Button>
+                          }
+                        />
+                      )}
                       {!bulkBusy && (
                         <Button size="sm" variant="ghost" onClick={() => setBulkProgress([])}>Dismiss</Button>
                       )}
                     </div>
                   </div>
+                  {cancelRequested && bulkBusy && (
+                    <div className="mb-3 rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs text-amber-400 flex items-center gap-2">
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      Cancellation in progress — pending instances have been halted, in-flight calls are finishing.
+                    </div>
+                  )}
                   <div className="h-1.5 rounded-full bg-secondary overflow-hidden mb-3">
                     <div
                       className={`h-full transition-all ${errCount > 0 && !bulkBusy ? "bg-destructive" : cxlCount > 0 && !bulkBusy ? "bg-amber-400" : "bg-primary"}`}
@@ -788,7 +903,9 @@ const Compute = () => {
                               {p.from}{p.to ? ` → ${p.to}` : ""}
                             </span>
                             {p.state === "cancelled" && (
-                              <span className="text-amber-400 uppercase text-[10px] tracking-wide">Cancelled</span>
+                              <span className="text-amber-400 uppercase text-[10px] tracking-wide">
+                                Cancelled {p.cancelReason === "in-flight" ? "· mid-flight" : "· while pending"}
+                              </span>
                             )}
                             {p.ms != null && <span className="text-muted-foreground">· {p.ms}ms</span>}
                           </div>
@@ -994,6 +1111,80 @@ const Compute = () => {
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setSnapVm(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Bulk operations audit log */}
+      <Dialog open={showAudit} onOpenChange={setShowAudit}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Bulk operations audit log</DialogTitle>
+            <DialogDescription>
+              Who triggered each bulk action, when it ran, which instances were selected, and the final outcome per instance.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-auto space-y-3">
+            {auditLoading && <p className="text-xs text-muted-foreground">Loading…</p>}
+            {!auditLoading && auditRows.length === 0 && (
+              <p className="text-xs text-muted-foreground">No bulk operations recorded yet.</p>
+            )}
+            {auditRows.map((row) => {
+              const items = row.response?.items ?? [];
+              const s = row.response?.summary;
+              return (
+                <div key={row.id} className="border border-border rounded-md p-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="text-sm font-medium text-foreground">
+                      {row.request?.label ?? row.action}
+                      {row.request?.retry_of ? " (retry)" : ""}
+                    </div>
+                    <span
+                      className={`text-[10px] uppercase tracking-wide ${
+                        row.status === "success" ? "text-green-400" : row.status === "failed" ? "text-destructive" : "text-amber-400"
+                      }`}
+                    >
+                      {row.status}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {row.request?.actor ?? "unknown"} · {new Date(row.started_at).toLocaleString()}
+                    {s ? ` · ${s.ok} ok, ${s.failed} failed, ${s.cancelled} cancelled` : ""}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-1 break-all">
+                    Selected IDs: {(row.request?.vm_ids ?? []).join(", ") || "—"}
+                  </p>
+                  <div className="mt-2 space-y-1">
+                    {items.map((it) => (
+                      <div key={it.id} className="text-[11px] flex items-start gap-2">
+                        <span
+                          className={
+                            it.state === "success" ? "text-green-400"
+                              : it.state === "error" ? "text-destructive"
+                              : "text-amber-400"
+                          }
+                        >
+                          ●
+                        </span>
+                        <span className="text-foreground">{it.name}</span>
+                        <span className="text-muted-foreground capitalize">
+                          {it.from} → {it.to}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {it.state}
+                          {it.state === "cancelled" && it.cancelReason
+                            ? ` (${it.cancelReason === "in-flight" ? "mid-flight" : "while pending"})`
+                            : ""}
+                          {it.ms != null ? ` · ${it.ms}ms` : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowAudit(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
